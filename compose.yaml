@@ -1,0 +1,30 @@
+name: personal-agent
+services:
+  agent-api:
+    build: .
+    command: ["/app/.venv/bin/uvicorn", "personal_agent.entrypoints.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    environment:
+      PERSONAL_AGENT_DATA_DIR: /data
+    volumes:
+      - agent-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 15s
+
+  spectrum:
+    build: ./bridges/spectrum
+    env_file: ./bridges/spectrum/.env
+    environment:
+      PERSONAL_AGENT_API_URL: http://agent-api:8000
+    depends_on:
+      agent-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  agent-data:
