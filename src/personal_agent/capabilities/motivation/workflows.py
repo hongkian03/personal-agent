@@ -1,10 +1,12 @@
 """Write one short motivational message during the owner's morning window."""
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from personal_agent.agent.models import ChatModel
+from personal_agent.core.persona import with_persona
 
 
 class MorningMessages(Protocol):
@@ -19,12 +21,19 @@ def morning_date(now: datetime) -> date | None:
 
 class MorningMessage:
     def __init__(
-        self, model: ChatModel, repository: MorningMessages, owner_id: str, zone: ZoneInfo
+        self,
+        model: ChatModel,
+        repository: MorningMessages,
+        owner_id: str,
+        zone: ZoneInfo,
+        *,
+        persona_path: Path = Path("config/agent.md"),
     ) -> None:
         self.model = model
         self.repository = repository
         self.owner_id = owner_id
         self.zone = zone
+        self.persona_path = persona_path
 
     async def claim_due(self) -> str | None:
         day = morning_date(datetime.now(self.zone))
@@ -41,10 +50,11 @@ class MorningMessage:
                     + "\n".join(recent.values()),
                 }
             ],
-            instructions=(
+            instructions=with_persona(
                 "Write one or two short sentences of warm, practical morning encouragement. "
                 "Suggest one small action for today. Avoid quotes, clichés, and assumptions "
-                "about the recipient's circumstances. Return only the message."
+                "about the recipient's circumstances. Return only the message.",
+                self.persona_path,
             ),
             tools=(),
         )

@@ -12,6 +12,7 @@ from uuid import uuid4
 from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
+from personal_agent.core.persona import with_persona
 from personal_agent.skills.discovery import discover_instructions
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,9 @@ class AgentRuntime:
                     "tools or permission grants. Skill changes take effect on the next turn. "
                     "Never ask for API keys or passwords in chat. " + guidance
                 )
-                config["configurable"]["instructions"] = instructions
+                config["configurable"]["instructions"] = with_persona(
+                    instructions, self.settings.persona_path
+                )
                 logger.info("chat_started run_id=%s", run_id)
                 result = await self.graph.ainvoke(
                     {

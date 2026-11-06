@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     timezone: str = "America/New_York"
     owner_id: str = Field(default="personal", min_length=1, max_length=128)
     data_dir: Path = Path(".data")
+    persona_path: Path = Path("config/agent.md")
     database_url: SecretStr | None = None
     api_token: SecretStr | None = None
     model_api_key: SecretStr | None = Field(

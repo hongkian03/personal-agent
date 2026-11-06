@@ -30,6 +30,18 @@ uv run personal-agent --message "Hello, what can you do?"
 Local persistence defaults to `.data/`. Keep that directory to retain conversations and
 skills. It is local application state, not a disposable cache.
 
+## Agent persona
+
+Edit [config/agent.md](config/agent.md) to set the agent's name, personality, communication
+preferences, and personal context. Chat and morning encouragement both load this file
+for each generation. Task instructions and tool permissions still apply; deterministic
+portfolio figures continue to use their own formatter.
+
+Local edits apply to the next generated message. Redeploy `agent-api` after editing the
+file locally to update Railway's copy. Set `PERSONAL_AGENT_PERSONA_PATH` to use a different
+file (relative paths use the process working directory). Profiles can contain up to
+12,000 characters; an empty or missing file uses the generic assistant instructions.
+
 ## HTTP interface
 
 Set `PERSONAL_AGENT_API_TOKEN` to a private bearer token, then start:

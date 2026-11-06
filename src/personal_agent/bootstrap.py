@@ -225,7 +225,11 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 )
             morning = (
                 MorningMessage(
-                    model, storage.morning, settings.owner_id, ZoneInfo(settings.timezone)
+                    model,
+                    storage.morning,
+                    settings.owner_id,
+                    ZoneInfo(settings.timezone),
+                    persona_path=settings.persona_path,
                 )
                 if model
                 else None

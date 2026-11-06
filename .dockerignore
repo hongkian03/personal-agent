@@ -5,5 +5,7 @@
 !README.md
 !src/
 !src/**
+!config/
+!config/agent.md
 **/__pycache__
 **/*.pyc
