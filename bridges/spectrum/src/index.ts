@@ -86,6 +86,10 @@ for await (const [space, message] of app.messages) {
     .digest("hex");
 
   try {
+    // Typing is best-effort: provider failures must not prevent an agent reply.
+    await space.startTyping().catch(() => {
+      console.warn("Could not start iMessage typing indicator.");
+    });
     const response = await fetch(chatUrl, {
       method: "POST",
       headers: {
@@ -110,5 +114,10 @@ for await (const [space, message] of app.messages) {
     await space.send(reply.text);
   } catch (error) {
     console.error("Could not reply to iMessage:", error instanceof Error ? error.name : "unknown error");
+  } finally {
+    // Also runs on HTTP errors, invalid replies, send failures, and timeouts.
+    await space.stopTyping().catch(() => {
+      console.warn("Could not stop iMessage typing indicator.");
+    });
   }
 }

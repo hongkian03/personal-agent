@@ -2,6 +2,13 @@
 
 A [Spectrum](https://photon.codes/docs/spectrum-ts) project. Wired with: imessage.
 
+## Typing indicator
+
+For authorized incoming text DMs, the bridge starts typing before requesting an agent
+response and stops after sending the reply. It also attempts to stop on errors and
+timeouts. Typing controls are best-effort; a provider failure does not block the reply.
+Device visibility should be checked in an actual iMessage conversation.
+
 ## Environment
 
 Before running, open `.env` and fill in the values:

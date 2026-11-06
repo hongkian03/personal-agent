@@ -20,6 +20,7 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 
 - **Conversational assistant:** Chat through iMessage, the CLI, or an authenticated HTTP
   API, with persistent conversation history, conversation resets, and access to registered tools.
+  iMessage shows a typing indicator while the agent prepares and sends a reply.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,
   communication preferences, and personal context for conversations. Tunable to anyone's preference.
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. Relevant
