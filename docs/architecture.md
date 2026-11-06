@@ -33,6 +33,14 @@ a configured PostgreSQL
 URL selects persistent Postgres checkpoints and skill tables. Startup creates initial
 schemas; schema migrations and multi-process conversation locks are still pending.
 
+Interactive chats can also expose OpenAI's hosted `web_search` tool. The OpenAI adapter
+adds the native tool alongside registered function tools, retains its raw output for
+subsequent model calls, and renders citation metadata as readable source links in the
+visible reply. The graph budgets hosted search/open/find calls across each chat turn.
+This provider-specific path does not create a local function handler or a generic web
+browser. Morning messages do not receive hosted search. See [web search](web-search.md)
+for configuration and operational checks.
+
 Failed/interrupted graph executions cannot be continued automatically; callers must start
 a new conversation. History has a configured size cap rather than automatic compaction.
 Use one process, with HTTPS supplied by the hosting platform for remote API access.

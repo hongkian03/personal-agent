@@ -21,6 +21,7 @@ class AgentState(TypedDict, total=False):
     pending_calls: list[dict[str, str]]
     text: str
     rounds: int
+    hosted_tool_calls: int
 
 
 def build_graph(
@@ -30,9 +31,10 @@ def build_graph(
     checkpointer: Any,
     max_tool_rounds: int = 8,
     tool_timeout_seconds: float = 30,
+    web_search_max_calls: int = 3,
 ):
     """Compile the graph; context/instructions are supplied via configurable per turn."""
-    if max_tool_rounds < 1 or tool_timeout_seconds <= 0:
+    if max_tool_rounds < 1 or tool_timeout_seconds <= 0 or web_search_max_calls < 1:
         raise ValueError("Execution limits must be positive")
 
     def context_of(config: RunnableConfig) -> ExecutionContext:
@@ -44,14 +46,30 @@ def build_graph(
     async def call_model(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         context = context_of(config)
         instructions = config.get("configurable", {}).get("instructions", "")
+        used_calls = state.get("hosted_tool_calls", 0)
+        remaining_calls = max(0, web_search_max_calls - used_calls)
+        hosted_tools = (
+            frozenset({"web_search"})
+            if "web:search" in context.granted_scopes and remaining_calls
+            else frozenset()
+        )
+        if "web:search" in context.granted_scopes and not remaining_calls:
+            instructions += (
+                "\nThe web search budget for this turn has been reached. "
+                "Use the sources already retrieved, state any remaining uncertainty, "
+                "and do not claim to have performed additional searches."
+            )
         reply = await model.respond(
             items=state.get("items", []),
             instructions=instructions,
             tools=tools.definitions(context),
+            hosted_tools=hosted_tools,
+            max_hosted_tool_calls=max(1, remaining_calls),
         )
         return {
             "items": reply.items,
             "text": reply.text,
+            "hosted_tool_calls": used_calls + reply.hosted_tool_calls,
             "pending_calls": [
                 {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
                 for call in reply.tool_calls

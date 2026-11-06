@@ -9,7 +9,7 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 | Area | Technologies |
 | --- | --- |
 | Backend | Python 3.13+, FastAPI, Uvicorn |
-| Agent harness | LangGraph, OpenAI Responses API, validated function calling |
+| Agent harness | LangGraph, OpenAI Responses API, hosted web search, validated function calling |
 | Messaging | TypeScript, Node.js, Spectrum / Photon for iMessage |
 | Persistence | SQLAlchemy, SQLite or PostgreSQL, LangGraph checkpoints |
 | Portfolio data | Interactive Brokers Flex Web Service, XML reports |
@@ -25,6 +25,8 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   communication preferences, and personal context for conversations. Tunable to anyone's preference.
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. Relevant
   active skills are retrieved during conversations.
+- **Web research:** Search the public web during conversations through OpenAI's hosted
+  search tool, with readable source links and a configurable search budget per turn.
 - **IBKR portfolio reporting:** Automatically sync holdings, cash balances, closing prices,
   reported performance, and dividend activity from a saved Activity Flex Query. Dated
   snapshots persist as the account's holdings change. I built it on IBKR just because that's what I use.

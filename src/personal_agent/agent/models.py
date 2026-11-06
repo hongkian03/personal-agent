@@ -18,6 +18,8 @@ class ModelReply:
     items: list[dict[str, Any]]
     text: str
     tool_calls: list[ToolCall]
+    # Count returned hosted-tool records conservatively, including unfinished attempts.
+    hosted_tool_calls: int = 0
 
 
 class ModelError(RuntimeError):
@@ -31,4 +33,6 @@ class ChatModel(Protocol):
         items: list[dict[str, Any]],
         instructions: str,
         tools: tuple[ToolDefinition, ...],
+        hosted_tools: frozenset[str] = frozenset(),
+        max_hosted_tool_calls: int = 3,
     ) -> ModelReply: ...

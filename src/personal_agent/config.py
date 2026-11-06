@@ -1,6 +1,7 @@
 """Application configuration. Secrets are never included in model context."""
 
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     max_tool_rounds: int = Field(default=8, ge=1, le=32)
     max_output_tokens: int = Field(default=2048, ge=128, le=32768)
     max_history_chars: int = Field(default=120000, ge=1000, le=1000000)
+    web_search_enabled: bool = True
+    web_search_context_size: Literal["low", "medium", "high"] = "medium"
+    web_search_max_calls: int = Field(default=3, ge=1, le=10)
     log_level: str = "INFO"
     ibkr_flex_token: SecretStr | None = None
     ibkr_flex_query_id: str | None = Field(default=None, pattern=r"^[0-9]{1,30}$")

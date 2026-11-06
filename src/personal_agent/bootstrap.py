@@ -15,6 +15,7 @@ from personal_agent.capabilities.portfolio.briefing import PortfolioMorningMessa
 from personal_agent.capabilities.portfolio.manifest import CAPABILITY as PORTFOLIO
 from personal_agent.capabilities.portfolio.tools import register_portfolio_tools
 from personal_agent.capabilities.portfolio.workflows import PortfolioService
+from personal_agent.capabilities.web.manifest import CAPABILITY as WEB
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
 from personal_agent.core.registry import CapabilityRegistry
@@ -24,10 +25,12 @@ from personal_agent.skills.service import SkillService
 from personal_agent.storage.database import open_storage
 
 
-def build_registry() -> CapabilityRegistry:
+def build_registry(*, web_search_enabled: bool = True) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for capability in (PORTFOLIO, MOTIVATION):
         registry.register(capability)
+    if web_search_enabled:
+        registry.register(WEB)
     return registry
 
 
@@ -215,6 +218,7 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                     model=settings.model,
                     timeout_seconds=settings.model_timeout_seconds,
                     max_output_tokens=settings.max_output_tokens,
+                    web_search_context_size=settings.web_search_context_size,
                 )
                 graph = build_graph(
                     model=model,
@@ -222,6 +226,7 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                     checkpointer=storage.checkpointer,
                     max_tool_rounds=settings.max_tool_rounds,
                     tool_timeout_seconds=settings.tool_timeout_seconds,
+                    web_search_max_calls=settings.web_search_max_calls,
                 )
             morning = (
                 MorningMessage(
