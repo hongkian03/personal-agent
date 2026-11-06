@@ -1,0 +1,7 @@
+{
+  "name": "personal-agent-infrastructure",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.6.0" },
+  "dependencies": { "railway": "^3.12.0" }
+}

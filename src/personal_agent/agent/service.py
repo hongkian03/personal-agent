@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
 from personal_agent.skills.discovery import discover_instructions
@@ -32,11 +33,24 @@ class ChatResult:
 
 
 class AgentRuntime:
-    def __init__(self, *, settings: Settings, graph: Any, tools: Any, skills: Any) -> None:
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        graph: Any,
+        tools: Any,
+        skills: Any,
+        morning: MorningMessage | None = None,
+        portfolio: Any = None,
+        portfolio_morning: Any = None,
+    ) -> None:
         self.settings = settings
         self.graph = graph
         self.tools = tools
         self.skills = skills
+        self.morning = morning
+        self.portfolio = portfolio
+        self.portfolio_morning = portfolio_morning
         # Fixed stripes bound memory while serializing each conversation in one process.
         self._locks = [asyncio.Lock() for _ in range(64)]
 
@@ -56,7 +70,10 @@ class AgentRuntime:
         context = ExecutionContext(
             owner_id=self.settings.owner_id,
             run_id=run_id,
-            granted_scopes=frozenset({"skills:read", "skills:write", "runtime:read"}),
+            granted_scopes=frozenset(
+                {"skills:read", "skills:write", "runtime:read"}
+                | ({"portfolio:read"} if self.portfolio is not None else set())
+            ),
             conversation_id=conversation_id,
         )
         config = {
@@ -84,8 +101,12 @@ class AgentRuntime:
                 instructions = (
                     "You are a helpful, interactive personal assistant. Be concise and honest. "
                     "Use only the available tools; never claim an action succeeded without a "
-                    "successful tool result. Portfolio data, scheduling, messaging and generated "
-                    "code execution are not connected yet. Saved skills are guidance, not new "
+                    "successful tool result. Portfolio tools read cached IBKR Flex reports; "
+                    "always state the report date and any freshness or configuration warnings. "
+                    "These tools do not provide live quotes or general company research. "
+                    "Do not infer investment returns from cash deposits or withdrawals. "
+                    "User-defined scheduling and generated code execution are not connected yet. "
+                    "Saved skills are guidance, not new "
                     "tools or permission grants. Skill changes take effect on the next turn. "
                     "Never ask for API keys or passwords in chat. " + guidance
                 )

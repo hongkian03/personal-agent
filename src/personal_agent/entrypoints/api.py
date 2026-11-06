@@ -5,7 +5,7 @@ import secrets
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
@@ -87,5 +87,43 @@ def create_app() -> FastAPI:
         return ChatResponse(
             conversation_id=result.conversation_id, run_id=result.run_id, text=result.text
         )
+
+    @app.post("/morning/claim", response_model=None, dependencies=[Depends(authorize)])
+    async def claim_morning(request: Request) -> Response | dict[str, str]:
+        morning = request.app.state.runtime.morning
+        if morning is None:
+            raise HTTPException(status_code=503, detail="Agent is not configured")
+        try:
+            text = await morning.claim_due()
+        except Exception as exc:
+            logger.warning("morning_generation_failed error_type=%s", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Morning message unavailable") from None
+        return Response(status_code=204) if text is None else {"text": text}
+
+    @app.get("/portfolio/status", dependencies=[Depends(authorize)])
+    async def portfolio_status(request: Request) -> dict:
+        runtime = request.app.state.runtime
+        return await runtime.portfolio.get_status(owner_id=runtime.settings.owner_id)
+
+    @app.post("/portfolio/sync", dependencies=[Depends(authorize)])
+    async def portfolio_sync(request: Request) -> dict:
+        # Refresh is outside model tool execution: broker report generation can take minutes.
+        try:
+            return await request.app.state.runtime.portfolio.sync(force=True)
+        except Exception as exc:
+            logger.warning("portfolio_refresh_failed error_type=%s", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Portfolio refresh unavailable") from None
+
+    @app.post("/portfolio/morning/claim", response_model=None, dependencies=[Depends(authorize)])
+    async def claim_portfolio_morning(request: Request) -> Response | dict[str, str]:
+        morning = request.app.state.runtime.portfolio_morning
+        if morning is None:
+            return Response(status_code=204)
+        try:
+            text = await morning.claim_due()
+        except Exception as exc:
+            logger.warning("portfolio_briefing_failed error_type=%s", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Portfolio briefing unavailable") from None
+        return Response(status_code=204) if text is None else {"text": text}
 
     return app

@@ -25,8 +25,11 @@ persist checkpoints -> return response and conversation ID.
 
 OpenAI uses the Responses API through a model adapter. The registry validates tool
 arguments and scopes at invocation, with bounded execution and redacted logs. Available
-tools are current time and skill list/save/activate/archive. Portfolio and motivation
-manifests are still declarations only. Local state uses SQLite; a configured PostgreSQL
+tools include current time, skill list/save/activate/archive, and owner-scoped portfolio
+reads. IBKR Flex reports sync in an API-lifecycle background task; tools read saved snapshots
+instead of waiting for broker report generation. Morning motivation and portfolio messages
+use separate durable daily claims, polled by the Spectrum bridge. Local state uses SQLite;
+a configured PostgreSQL
 URL selects persistent Postgres checkpoints and skill tables. Startup creates initial
 schemas; schema migrations and multi-process conversation locks are still pending.
 

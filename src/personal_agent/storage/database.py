@@ -14,6 +14,8 @@ from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
+from personal_agent.storage.repositories.morning import MorningMessageRepository
+from personal_agent.storage.repositories.portfolio import PortfolioRepository
 from personal_agent.storage.repositories.skills import SqlSkillRepository
 
 
@@ -21,6 +23,8 @@ from personal_agent.storage.repositories.skills import SqlSkillRepository
 class Storage:
     checkpointer: Any
     skills: SqlSkillRepository
+    morning: MorningMessageRepository
+    portfolio: PortfolioRepository
 
 
 @asynccontextmanager
@@ -50,4 +54,8 @@ async def open_storage(*, database_url: str | None, data_dir: Path):
         await saver.setup()
         skills = SqlSkillRepository(engine)
         await skills.initialize()
-        yield Storage(checkpointer=saver, skills=skills)
+        morning = MorningMessageRepository(engine)
+        await morning.initialize()
+        portfolio = PortfolioRepository(engine)
+        await portfolio.initialize()
+        yield Storage(checkpointer=saver, skills=skills, morning=morning, portfolio=portfolio)

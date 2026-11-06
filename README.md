@@ -66,10 +66,41 @@ streaming is not implemented. API errors redact provider details and credentials
 - Interrupted turns require a new conversation; tools are not automatically replayed.
   Conversations stop at a history-size limit instead of silently dropping old context.
 
-The portfolio and motivation capabilities still reserve names for future functionality.
-Photon/iMessage, stock retrieval, reminders, scheduled delivery, saved-workflow execution,
-and generated-code execution are not wired. The assistant must not claim those actions
-are available. No test suite has been added at this stage.
+Spectrum connects the agent to iMessage. IBKR Flex supplies dated portfolio holdings,
+closing prices, performance and dividend cash activity. General stock quotes, reminders,
+user-defined schedules, saved-workflow execution, and generated-code execution remain planned.
+
+## IBKR portfolio
+
+Create an XML Activity Flex Query in IBKR, then set `PERSONAL_AGENT_IBKR_FLEX_TOKEN` and
+`PERSONAL_AGENT_IBKR_FLEX_QUERY_ID` together in the API environment. The API syncs reports
+in the background and the agent reads saved snapshots through portfolio tools. Keep the
+query's symbol filters empty so new purchases are included automatically.
+
+See [IBKR setup and editable report format](docs/ibkr.md) for the exact report sections,
+fields and configuration. Edit [the XML field mapping](src/personal_agent/integrations/ibkr/report_spec.py)
+to change what the application reads and [the briefing formatter](src/personal_agent/capabilities/portfolio/briefing.py)
+to change what the morning message displays. The saved IBKR query is edited in Client
+Portal; Python changes do not update it remotely.
+
+Once a report is available, the bridge sends a separate portfolio briefing between
+8:00 and 8:15 a.m. on weekdays in `PERSONAL_AGENT_TIMEZONE`. Flex syncing continues
+on weekends, while both proactive messages skip Saturdays and Sundays. Disable the briefing with
+`PERSONAL_AGENT_PORTFOLIO_MORNING_ENABLED=false` on the API or bridge. Portfolio values
+are report-date observations, not live quotes. Without credentials the existing agent
+continues to work and portfolio tools identify the connection as unconfigured.
+
+## Morning iMessage
+
+Set `PERSONAL_AGENT_MORNING_ENABLED=true` in `bridges/spectrum/.env` and restart the API and
+bridge. The bridge checks for a message every 30 seconds. It sends to its configured
+`PERSONAL_AGENT_ALLOWED_SENDER_ID` between 8:00 and 8:15 a.m. on weekdays in the Python API's
+`PERSONAL_AGENT_TIMEZONE` (default `America/New_York`). Keep both processes running during
+that window. Days missed entirely are skipped.
+
+The API generates short encouragement using recent messages for variety. It records a
+claim in the database before the bridge attempts delivery, so an interrupted or ambiguous
+send can be missed, but restarting will not automatically send it twice.
 
 ## Hosting and persistence
 
@@ -80,9 +111,11 @@ Before scaling to multiple API workers or replicas, add cross-process conversati
 Set `PERSONAL_AGENT_DATABASE_URL` to a Postgres connection URL for hosted persistence.
 Otherwise attach durable storage for `.data/`; ephemeral container storage loses state on
 replacement. Storage initialization is currently performed by the runtime, not Alembic.
-Use HTTPS at the hosting ingress for remote access. The service needs outbound access
-to OpenAI and access to its database. Hosting remains
-undecided, and no platform-specific deployment configuration is included.
+The service needs outbound access to OpenAI and access to its database. Railway hosts
+the API and Spectrum bridge as separate Docker services, with one persistent SQLite
+volume mounted at `/data` on the API. The bridge reaches the API over Railway's private
+network. See [Railway setup and operations](docs/railway.md) for deployment commands,
+required variables, and migration back to a local machine.
 
 ## Structure
 
@@ -94,8 +127,8 @@ src/personal_agent/
   workflows/                Future saved-tool compositions
   execution/                Future isolated execution boundary
   capabilities/
-    portfolio/              Portfolio-owned contracts and future behavior
-    motivation/             Future morning-message behavior
+    portfolio/              IBKR snapshots, read tools and morning briefing
+    motivation/             Daily morning encouragement
   messaging/                Future Photon transport
   scheduling/               Schedule contracts and future dispatcher
   integrations/

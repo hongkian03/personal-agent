@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setInterval } from "node:timers/promises";
 import { imessage } from "@spectrum-ts/imessage";
 import { Spectrum } from "spectrum-ts";
 
@@ -17,6 +18,55 @@ const app = await Spectrum({
   projectSecret: requiredEnv("PROJECT_SECRET"),
   providers: [imessage.config()],
 });
+
+async function sendMorningMessages(): Promise<void> {
+  const provider = imessage(app);
+  const claims = [
+    ...(process.env.PERSONAL_AGENT_PORTFOLIO_MORNING_ENABLED !== "false"
+      ? [{ path: "/portfolio/morning/claim", label: "Portfolio briefing" }] : []),
+    ...(process.env.PERSONAL_AGENT_MORNING_ENABLED === "true"
+      ? [{ path: "/morning/claim", label: "Morning message" }] : []),
+  ];
+  let dm: Awaited<ReturnType<typeof provider.space.create>> | undefined;
+
+  for await (const _ of setInterval(30_000, undefined, { ref: false })) {
+    for (const claim of claims) {
+      try {
+        // Resolve the approved recipient before reserving a day's message.
+        dm ??= await provider.space.create(allowedSender);
+        const response = await fetch(new URL(claim.path, chatUrl), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}` },
+          redirect: "error",
+          signal: AbortSignal.timeout(190_000),
+        });
+        if (response.status === 204) continue;
+        if (!response.ok) {
+          console.error(`${claim.label} API returned HTTP ${response.status}`);
+          continue;
+        }
+        const reply: unknown = await response.json();
+        if (
+          typeof reply !== "object" || reply === null ||
+          !("text" in reply) || typeof reply.text !== "string" || !reply.text.trim()
+        ) {
+          throw new Error("Morning message API returned an invalid message");
+        }
+        await dm.send(reply.text);
+        console.log(`${claim.label} submitted to Spectrum.`);
+      } catch (error) {
+        console.error("Morning message failed:", error instanceof Error ? error.name : "unknown error");
+      }
+    }
+  }
+}
+
+if (
+  process.env.PERSONAL_AGENT_MORNING_ENABLED === "true" ||
+  process.env.PERSONAL_AGENT_PORTFOLIO_MORNING_ENABLED !== "false"
+) {
+  void sendMorningMessages();
+}
 
 console.log("Spectrum bridge is listening for authorized iMessages.");
 

@@ -14,3 +14,9 @@ class MarketDataProvider(Protocol):
 
 class HoldingsRepository(Protocol):
     async def list_holdings(self, user_id: str) -> Sequence[Holding]: ...
+
+
+class PortfolioReportSource(Protocol):
+    async def fetch_report(self):
+        """Retrieve one normalized portfolio report from the configured account source."""
+        ...

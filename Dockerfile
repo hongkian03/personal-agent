@@ -8,4 +8,4 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 RUN uv sync --locked --no-editable
 EXPOSE 8000
-CMD ["/app/.venv/bin/uvicorn", "personal_agent.entrypoints.api:create_app", "--factory", "--host", "::", "--port", "8000"]
+CMD ["sh", "-c", "exec /app/.venv/bin/uvicorn personal_agent.entrypoints.api:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]

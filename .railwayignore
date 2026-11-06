@@ -1,0 +1,14 @@
+.git/
+.env
+.env.*
+!.env.example
+.venv/
+.data/
+.ruff_cache/
+.pytest_cache/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+bridges/
+tests/
+**/node_modules/

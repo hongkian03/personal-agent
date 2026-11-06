@@ -1,7 +1,8 @@
 """Composition root: build providers, tools, persistence and the interactive runtime."""
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -9,10 +10,15 @@ from personal_agent.agent.graph import build_graph
 from personal_agent.agent.service import AgentRuntime
 from personal_agent.agent.tools import ToolDefinition, ToolRegistry
 from personal_agent.capabilities.motivation.manifest import CAPABILITY as MOTIVATION
+from personal_agent.capabilities.motivation.workflows import MorningMessage
+from personal_agent.capabilities.portfolio.briefing import PortfolioMorningMessage
 from personal_agent.capabilities.portfolio.manifest import CAPABILITY as PORTFOLIO
+from personal_agent.capabilities.portfolio.tools import register_portfolio_tools
+from personal_agent.capabilities.portfolio.workflows import PortfolioService
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
 from personal_agent.core.registry import CapabilityRegistry
+from personal_agent.integrations.ibkr.client import IBKRFlexClient
 from personal_agent.integrations.llm.provider import OpenAIModel
 from personal_agent.skills.service import SkillService
 from personal_agent.storage.database import open_storage
@@ -25,7 +31,7 @@ def build_registry() -> CapabilityRegistry:
     return registry
 
 
-def build_tools(*, repository, settings: Settings) -> ToolRegistry:
+def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegistry:
     tools = ToolRegistry(timeout_seconds=settings.tool_timeout_seconds)
     management_ids = {
         "runtime.current_time",
@@ -34,7 +40,10 @@ def build_tools(*, repository, settings: Settings) -> ToolRegistry:
         "skills.activate",
         "skills.archive",
     }
-    service = SkillService(repository, available_tool_ids=management_ids)
+    service = SkillService(
+        repository,
+        available_tool_ids=management_ids | (set(PORTFOLIO.tool_ids) if portfolio else set()),
+    )
 
     def register(name, description, properties, required, scope, handler, *, mutates=False):
         tools.register(
@@ -157,18 +166,48 @@ def build_tools(*, repository, settings: Settings) -> ToolRegistry:
         archive_skill,
         mutates=True,
     )
+    if portfolio is not None:
+        register_portfolio_tools(tools, portfolio)
     return tools
 
 
+async def run_portfolio_sync(service, interval_seconds: float) -> None:
+    """Check periodically; the service coalesces refreshes and backs off failed attempts."""
+    while True:
+        try:
+            await service.sync()
+        except Exception as exc:
+            # Never log provider exceptions: they may contain broker URLs or report data.
+            logging.getLogger(__name__).warning(
+                "portfolio_sync_failed error_type=%s", type(exc).__name__
+            )
+        await asyncio.sleep(min(60, interval_seconds))
+
+
 @asynccontextmanager
-async def open_runtime(settings: Settings | None = None):
+async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
     settings = settings or Settings()
     logging.basicConfig(level=settings.log_level, format="%(levelname)s %(name)s %(message)s")
     database_url = settings.database_url.get_secret_value() if settings.database_url else None
     async with open_storage(database_url=database_url, data_dir=settings.data_dir) as storage:
-        tools = build_tools(repository=storage.skills, settings=settings)
+        client = ibkr_client
+        if client is None and settings.ibkr_flex_token and settings.ibkr_flex_query_id:
+            client = IBKRFlexClient(
+                token=settings.ibkr_flex_token.get_secret_value(),
+                query_id=settings.ibkr_flex_query_id,
+                account_ids=settings.ibkr_accounts,
+            )
         model = None
+        sync_task = None
         try:
+            portfolio = PortfolioService(
+                storage.portfolio,
+                client,
+                settings.owner_id,
+                timezone=settings.timezone,
+                sync_interval_seconds=settings.portfolio_sync_interval_seconds,
+            )
+            tools = build_tools(repository=storage.skills, settings=settings, portfolio=portfolio)
             graph = None
             if settings.model_api_key:
                 model = OpenAIModel(
@@ -184,7 +223,46 @@ async def open_runtime(settings: Settings | None = None):
                     max_tool_rounds=settings.max_tool_rounds,
                     tool_timeout_seconds=settings.tool_timeout_seconds,
                 )
-            yield AgentRuntime(settings=settings, graph=graph, tools=tools, skills=storage.skills)
+            morning = (
+                MorningMessage(
+                    model, storage.morning, settings.owner_id, ZoneInfo(settings.timezone)
+                )
+                if model
+                else None
+            )
+            portfolio_morning = (
+                PortfolioMorningMessage(
+                    portfolio,
+                    storage.morning,
+                    settings.owner_id,
+                    ZoneInfo(settings.timezone),
+                    focused_symbols=settings.focused_symbols,
+                )
+                if settings.portfolio_morning_enabled
+                else None
+            )
+            if client is not None:
+                sync_task = asyncio.create_task(
+                    run_portfolio_sync(portfolio, settings.portfolio_sync_interval_seconds),
+                    name="ibkr-portfolio-sync",
+                )
+            yield AgentRuntime(
+                settings=settings,
+                graph=graph,
+                tools=tools,
+                skills=storage.skills,
+                morning=morning,
+                portfolio=portfolio,
+                portfolio_morning=portfolio_morning,
+            )
         finally:
-            if model:
-                await model.aclose()
+            if sync_task is not None:
+                sync_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await sync_task
+            try:
+                if client is not None:
+                    await client.aclose()
+            finally:
+                if model:
+                    await model.aclose()
