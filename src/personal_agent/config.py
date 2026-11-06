@@ -27,7 +27,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("PERSONAL_AGENT_MODEL_API_KEY", "OPENAI_API_KEY"),
     )
-    model: str = "gpt-4.1-mini"
+    model: str = "gpt-6-luna"
     model_timeout_seconds: float = Field(default=60, gt=0, le=600)
     chat_timeout_seconds: float = Field(default=180, gt=0, le=1800)
     tool_timeout_seconds: float = Field(default=30, gt=0, le=300)
