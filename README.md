@@ -19,7 +19,7 @@ and saved skills persist independently of the model provider.
 ## Capabilities
 
 - **Conversational assistant:** Chat through iMessage, the CLI, or an authenticated HTTP
-  API, with persistent conversation history and access to registered tools.
+  API, with persistent conversation history, conversation resets, and access to registered tools.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,
   communication preferences, and personal context for conversations and morning encouragement.
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. Relevant

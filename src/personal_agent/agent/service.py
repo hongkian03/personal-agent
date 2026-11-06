@@ -41,6 +41,7 @@ class AgentRuntime:
         graph: Any,
         tools: Any,
         skills: Any,
+        checkpointer: Any = None,
         morning: MorningMessage | None = None,
         portfolio: Any = None,
         portfolio_morning: Any = None,
@@ -49,6 +50,7 @@ class AgentRuntime:
         self.graph = graph
         self.tools = tools
         self.skills = skills
+        self.checkpointer = checkpointer
         self.morning = morning
         self.portfolio = portfolio
         self.portfolio_morning = portfolio_morning
@@ -61,13 +63,25 @@ class AgentRuntime:
         conversation_id = conversation_id or uuid4().hex
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", conversation_id):
             raise ChatValidationError("Invalid conversation ID.")
-        if self.graph is None:
-            raise RuntimeConfigurationError("Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY.")
         run_id = uuid4().hex
         # Prevent ambiguous owner/conversation concatenation and scope persisted checkpoints.
         thread_id = hashlib.sha256(
             json.dumps([self.settings.owner_id, conversation_id]).encode()
         ).hexdigest()
+        if message.strip() == "/new":
+            if self.checkpointer is None:
+                raise RuntimeConfigurationError("Conversation storage is not configured.")
+            async with asyncio.timeout(self.settings.chat_timeout_seconds):
+                async with self._locks[int(thread_id[:8], 16) % len(self._locks)]:
+                    await self.checkpointer.adelete_thread(thread_id)
+            return ChatResult(
+                conversation_id,
+                run_id,
+                "Conversation context cleared. Your next message starts fresh. "
+                "Saved skills, portfolio data, and settings are preserved.",
+            )
+        if self.graph is None:
+            raise RuntimeConfigurationError("Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY.")
         context = ExecutionContext(
             owner_id=self.settings.owner_id,
             run_id=run_id,

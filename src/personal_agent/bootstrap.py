@@ -255,6 +255,7 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 graph=graph,
                 tools=tools,
                 skills=storage.skills,
+                checkpointer=storage.checkpointer,
                 morning=morning,
                 portfolio=portfolio,
                 portfolio_morning=portfolio_morning,

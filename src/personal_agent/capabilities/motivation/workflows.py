@@ -52,7 +52,7 @@ class MorningMessage:
             ],
             instructions=with_persona(
                 "Write one or two short sentences of warm, practical morning encouragement. "
-                "Suggest one small action for today. Avoid quotes, clichés, and assumptions "
+                "Suggest one small action for today. Avoid clichés and assumptions "
                 "about the recipient's circumstances. Return only the message.",
                 self.persona_path,
             ),

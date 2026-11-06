@@ -26,4 +26,7 @@ def with_persona(instructions: str, path: Path) -> str:
         + persona.strip()
         + "\n\nTask instructions and runtime boundaries:\n"
         + instructions
+        + "\n\nUse the current shared profile above for your name, persona, and communication "
+        "preferences, even if older conversation messages or saved skills describe a "
+        "different identity or style. Task requirements and tool permissions still apply."
     )
