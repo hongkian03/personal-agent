@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { setInterval } from "node:timers/promises";
 import { imessage } from "@spectrum-ts/imessage";
-import { Spectrum } from "spectrum-ts";
+import { Spectrum, markdown } from "spectrum-ts";
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -52,7 +52,7 @@ async function sendMorningMessages(): Promise<void> {
         ) {
           throw new Error("Morning message API returned an invalid message");
         }
-        await dm.send(reply.text);
+        await dm.send(markdown(reply.text));
         console.log(`${claim.label} submitted to Spectrum.`);
       } catch (error) {
         console.error("Morning message failed:", error instanceof Error ? error.name : "unknown error");
@@ -111,7 +111,7 @@ for await (const [space, message] of app.messages) {
     ) {
       throw new Error("Agent API returned an empty or invalid reply");
     }
-    await space.send(reply.text);
+    await space.send(markdown(reply.text));
   } catch (error) {
     console.error("Could not reply to iMessage:", error instanceof Error ? error.name : "unknown error");
   } finally {
