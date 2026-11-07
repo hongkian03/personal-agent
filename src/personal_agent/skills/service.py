@@ -3,6 +3,7 @@
 import re
 from datetime import datetime, timezone
 
+from personal_agent.skills.discovery import available_skills
 from personal_agent.skills.models import SkillRevision
 from personal_agent.skills.ports import SkillRepository
 
@@ -71,6 +72,20 @@ class SkillService:
         )
         self.validate(skill)
         await self.repository.activate(owner_id=owner_id, skill_id=skill_id, revision=revision)
+
+    async def load(
+        self, *, owner_id: str, skill_id: str, available_tool_ids: set[str]
+    ) -> SkillRevision:
+        """Read only the current active, authorized revision without changing activation."""
+        skills = available_skills(
+            await self.repository.list_active(owner_id=owner_id),
+            owner_id=owner_id,
+            available_tool_ids=available_tool_ids,
+        )
+        for skill in skills:
+            if skill.skill_id == skill_id:
+                return skill
+        raise LookupError("Skill is not active or is unavailable for this execution")
 
     async def archive(self, *, owner_id: str, skill_id: str) -> None:
         await self.repository.archive(owner_id=owner_id, skill_id=skill_id)

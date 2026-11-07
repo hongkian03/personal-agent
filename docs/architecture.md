@@ -20,12 +20,12 @@ import concrete providers. Keep capability-specific settings and calculations th
 ## Implemented runtime
 
 CLI or authenticated POST /chat -> trusted configured owner -> conversation lock ->
-load checkpoint -> retrieve relevant active skills -> LangGraph model/tool loop ->
+load checkpoint -> build skill catalog and load exact references -> LangGraph model/tool loop ->
 persist checkpoints -> return response and conversation ID.
 
 OpenAI uses the Responses API through a model adapter. The registry validates tool
 arguments and scopes at invocation, with bounded execution and redacted logs. Available
-tools include current time, skill list/save/activate/archive, and owner-scoped portfolio
+tools include current time, skill list/load/save/activate/archive, and owner-scoped portfolio
 reads. IBKR Flex reports sync in an API-lifecycle background task; tools read saved snapshots
 instead of waiting for broker report generation. Morning motivation and portfolio messages
 use separate durable daily claims, polled by the Spectrum bridge. Local state uses SQLite;
@@ -97,15 +97,20 @@ and audit. Skill text does not grant scopes. Skill handlers are wired in bootstr
 workflow and schedule management handlers remain unimplemented.
 
 For each incoming message: authenticate identity, load conversation and originating run
-references, retrieve relevant active skills, expose currently authorized tools, execute
+references, expose the available skill catalog and authorized tools, load selected skills, execute
 requested calls, persist results, and reply. Proactive messages retain their conversation
 and run references so replies can refer to the briefing that prompted them.
 
 The application supplies `ExecutionContext`; the model cannot choose owner IDs or grant
 itself scopes. Management handlers scope repository operations to that trusted owner.
-New or updated skills become discoverable after activation; each chat turn uses one
-retrieved set of instruction revisions. Revisions and their IDs are included in checkpointed
-instructions. Future saved workflows and schedules will pin workflow and skill revisions.
+New or updated skills become discoverable after activation. Each turn includes a bounded
+catalog of active, tool-compatible skill IDs, names and descriptions. Exact names/IDs
+preload full instructions; otherwise the model selects using conversation context and
+calls `skills.load`. Catalog overflow is reported and `skills.list` exposes the complete
+available catalog. Load/list handlers recheck the trusted owner and available tools;
+loading reads the current active revision without changing activation. Loaded tool
+outputs retain their IDs and revisions in conversation history. Future saved workflows
+and schedules will pin workflow and skill revisions.
 
 Generated scripts are a separate future extension through `execution/SandboxExecutor`.
 There is no host-shell tool or implementation. Do not import generated Python into the

@@ -8,11 +8,48 @@
 4. Executable extensions: future generated scripts or installed integrations, isolated from
    the stable runtime and subject to validation and scoped authorization.
 
-The runtime implements owner-scoped skill persistence, bounded lexical discovery, and
-chat tools to list active skills, save revisions, activate/roll back, and archive them.
+The runtime implements owner-scoped skill persistence, a bounded metadata catalog, and
+chat tools to list available active skills, load instructions, save revisions,
+activate/roll back, and archive them.
 Saved-workflow execution, schedule management, and sandbox execution remain contracts
 only. Skills that require unavailable tools are rejected or excluded from retrieval.
 Tool-less skills can teach conversational procedures, tone and response structure.
+
+## Selecting and loading skills
+
+Each chat turn exposes a JSON catalog containing skill IDs, names and descriptions.
+The catalog includes active skills for the trusted owner whose required tools are
+available in that execution; it is not filtered by keyword overlap with the message.
+The model uses the request and conversation history to choose a skill, then calls
+`skills.load` with its ID to read the current active revision's full instructions.
+Loading is read-only and does not activate or execute a skill. `skills.list` returns
+the complete available catalog, with revision numbers, for inspection or selection.
+
+An exact skill name or ID in the user's message takes a direct path: its active
+instructions are included before the first model call, without a separate load round.
+Matching ignores case and repeated whitespace, requires the whole name or ID, and
+prefers longer overlapping names. Duplicate names are left for the model to
+disambiguate from the catalog; a unique ID resolves directly. A reference only loads
+guidance, so the model must still respect requests to inspect, edit or avoid a skill.
+
+The initial catalog and directly loaded instruction lists have separate budgets of
+12,000 and 16,000 characters. Entries are never cut mid-instruction. Exact references
+are prioritized in the catalog; omitted entries are reported and remain accessible
+through `skills.list` and `skills.load`. The catalog refreshes on the next turn, while
+the tools check current activation and available tools whenever invoked. Previously
+loaded tool outputs can remain in conversation history; the model is instructed to
+load current instructions again when selecting a skill on a later turn.
+
+To try this through iMessage, CLI or the authenticated API:
+
+- "List my available skills."
+- "Save and activate a skill called Company research: explain the business model,
+  competitors and key risks, and separate facts from uncertainty."
+- "How does Nvidia make money?" (the model can select from the catalog).
+- "Use Company research on AMD." (the exact name loads directly).
+
+Deploy API source changes before testing through the hosted bridge; see
+[Railway operations](railway.md). No bridge change is needed for skill discovery.
 
 ## Example: weekly portfolio review
 
@@ -34,7 +71,7 @@ Workflow and skill names do not automatically create executable tools.
 ## Definition formats and validation
 
 SkillRevision stores owner, ID, revision, instructions, description, required tool IDs,
-and creation timestamp. Retrieval loads only relevant active revisions for that owner.
+and creation timestamp. Catalog selection and loading use active revisions for that owner.
 Activation selects a saved revision; rollback selects a previous revision. Append uses
 optimistic concurrency to prevent silently overwriting concurrent edits. Archive preserves
 history but removes a skill from discovery.
@@ -60,8 +97,9 @@ capability registry. The runtime must resolve the two namespaces without ambigui
 
 Repositories will persist skill/workflow revisions, activation pointers, schedules,
 conversation links, tool/run/step records, and outgoing message state. Today only skills
-and LangGraph checkpoints are persisted; checkpoint instructions include retrieved skill
-revision IDs. Dedicated execution audit tables and migrations are still pending.
+and LangGraph checkpoints are persisted; loaded skill tool outputs include the skill ID
+and revision in conversation history. Dedicated execution audit tables and migrations
+are still pending.
 
 Retries reuse a stable occurrence/run ID and persisted step state. Mutating tools require
 operation-level duplicate protection or reconciliation. A persisted checkpoint alone cannot

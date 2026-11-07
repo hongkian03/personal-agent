@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from personal_agent.agent.graph import build_graph
 from personal_agent.agent.service import AgentRuntime
-from personal_agent.agent.tools import ToolDefinition, ToolRegistry
+from personal_agent.agent.tools import ToolDefinition, ToolError, ToolRegistry
 from personal_agent.capabilities.motivation.manifest import CAPABILITY as MOTIVATION
 from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.capabilities.portfolio.briefing import PortfolioMorningMessage
@@ -21,6 +21,7 @@ from personal_agent.core.context import ExecutionContext
 from personal_agent.core.registry import CapabilityRegistry
 from personal_agent.integrations.ibkr.client import IBKRFlexClient
 from personal_agent.integrations.llm.provider import OpenAIModel
+from personal_agent.skills.discovery import available_skills, skill_details, skill_summary
 from personal_agent.skills.service import SkillService
 from personal_agent.storage.database import open_storage
 
@@ -39,6 +40,7 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
     management_ids = {
         "runtime.current_time",
         "skills.list",
+        "skills.load",
         "skills.save_revision",
         "skills.activate",
         "skills.archive",
@@ -72,17 +74,31 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
         }
 
     async def list_skills(arguments: dict, context: ExecutionContext) -> dict:
-        revisions = await repository.list_active(owner_id=context.owner_id)
+        revisions = available_skills(
+            await repository.list_active(owner_id=context.owner_id),
+            owner_id=context.owner_id,
+            available_tool_ids={tool.id for tool in tools.definitions(context)},
+        )
         return {
             "skills": [
-                {
-                    "skill_id": s.skill_id,
-                    "revision": s.revision,
-                    "name": s.name,
-                    "description": s.description,
-                }
+                {**skill_summary(s), "revision": s.revision}
                 for s in revisions
             ]
+        }
+
+    async def load_skill(arguments: dict, context: ExecutionContext) -> dict:
+        try:
+            skill = await service.load(
+                owner_id=context.owner_id,
+                skill_id=arguments["skill_id"],
+                available_tool_ids={tool.id for tool in tools.definitions(context)},
+            )
+        except LookupError as exc:
+            raise ToolError(str(exc)) from exc
+        return {
+            **skill_details(skill),
+            "note": "Read-only guidance for this task, not a permission grant or new tool. "
+            "Loading does not save, activate or execute a skill.",
         }
 
     async def save_skill(arguments: dict, context: ExecutionContext) -> dict:
@@ -116,11 +132,23 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
     )
     register(
         "skills.list",
-        "List active reusable skills and their revisions.",
+        "List the full catalog of active reusable skills available for this execution. "
+        "Returns names, descriptions, IDs and revisions; use skills.load for instructions.",
         {},
         [],
         "skills:read",
         list_skills,
+    )
+    register(
+        "skills.load",
+        "Read full instructions for a selected active skill by its exact skill_id. "
+        "Select using the catalog and conversation context; load before use unless the current "
+        "turn already supplies its instructions. "
+        "This does not change activation or execute the skill.",
+        {"skill_id": skill_id},
+        ["skill_id"],
+        "skills:read",
+        load_skill,
     )
     register(
         "skills.save_revision",

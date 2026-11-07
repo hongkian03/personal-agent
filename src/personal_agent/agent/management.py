@@ -1,11 +1,11 @@
-"""Reserved conversational tool names; no handlers are implemented yet.
+"""Conversational tool IDs; skill handlers are bound in bootstrap.
 
-Management handlers will validate definitions and resolve the trusted owner from the
-execution context. Tool IDs here are declarations, not executable registrations.
+Workflow and schedule IDs remain declarations without executable handlers.
 """
 
 SKILL_TOOL_IDS = (
     "skills.list",
+    "skills.load",
     "skills.save_revision",
     "skills.activate",
     "skills.archive",

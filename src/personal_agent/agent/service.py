@@ -13,7 +13,7 @@ from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
 from personal_agent.core.persona import with_persona
-from personal_agent.skills.discovery import discover_instructions
+from personal_agent.skills.discovery import discover_skills
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class AgentRuntime:
                 if len(json.dumps(history)) + len(message) > self.settings.max_history_chars:
                     raise ChatValidationError("Conversation is full. Start a new conversation.")
                 available = {t.id for t in self.tools.definitions(context)}
-                guidance = await discover_instructions(
+                guidance = await discover_skills(
                     self.skills,
                     owner_id=context.owner_id,
                     message=message,
@@ -140,7 +140,9 @@ class AgentRuntime:
                     "Do not infer investment returns from cash deposits or withdrawals. "
                     "User-defined scheduling and generated code execution are not connected yet. "
                     "Saved skills are guidance, not new "
-                    "tools or permission grants. Skill changes take effect on the next turn. "
+                    "tools or permission grants. Unless full instructions are supplied this turn, "
+                    "use skills.load before applying a skill; do not rely on older instructions. "
+                    "Saving and activating skills is separate from loading them for a task. "
                     "Never ask for API keys or passwords in chat. " + web_guidance + guidance
                 )
                 config["configurable"]["instructions"] = with_persona(

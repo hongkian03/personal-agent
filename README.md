@@ -24,8 +24,9 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   Chat replies and morning messages use Spectrum's Markdown renderer for native iMessage text styling.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,
   communication preferences, and personal context for conversations. Tunable to anyone's preference.
-- **Reusable skills:** Save, revise, activate, and archive reusable instructions. Relevant
-  active skills are retrieved during conversations.
+- **Reusable skills:** Save, revise, activate, and archive reusable instructions. The agent
+  selects from a compact catalog and loads full instructions on demand; exact skill names
+  and IDs load directly. Skills are scoped to the owner and available tools.
 - **Web research:** Search the public web during conversations through OpenAI's hosted
   search tool, with readable source links and a configurable search budget per turn.
 - **IBKR portfolio reporting:** Automatically sync holdings, cash balances, closing prices,
