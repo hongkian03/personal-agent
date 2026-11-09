@@ -15,6 +15,10 @@ Saved-workflow execution, schedule management, and sandbox execution remain cont
 only. Skills that require unavailable tools are rejected or excluded from retrieval.
 Tool-less skills can teach conversational procedures, tone and response structure.
 
+For an editable starting point, see the [stock research skill scaffold](stock-research.md).
+Its metadata and instructions are source templates; they become available to the agent
+only after being saved and activated in the intended runtime.
+
 ## Selecting and loading skills
 
 Each chat turn exposes a JSON catalog containing skill IDs, names and descriptions.

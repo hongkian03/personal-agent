@@ -1,0 +1,6 @@
+{
+  "skill_id": "stock-research",
+  "name": "Stock research",
+  "description": "Research a requested public company or stock using current public sources, and report its business, recent results, developments, and risks with dated citations. Optionally relate the findings to the user's saved portfolio when asked.",
+  "required_tool_ids": ["runtime.current_time"]
+}
