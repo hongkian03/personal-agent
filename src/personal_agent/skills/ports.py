@@ -6,6 +6,12 @@ from personal_agent.skills.models import SkillRevision
 
 
 class SkillRepository(Protocol):
+    async def import_revision(
+        self, skill: SkillRevision, *, source_digest: str, activate: bool
+    ) -> tuple[int, bool]:
+        """Atomically apply a changed package; return its revision and whether applied."""
+        ...
+
     async def list_active(self, *, owner_id: str) -> tuple[SkillRevision, ...]: ...
 
     async def get_revision(

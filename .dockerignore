@@ -7,5 +7,6 @@
 !src/**
 !config/
 !config/agent.md
+!config/skills.json
 **/__pycache__
 **/*.pyc

@@ -3,9 +3,11 @@
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
-from personal_agent.bootstrap import open_runtime
+from personal_agent.bootstrap import open_runtime, skill_tool_ids
+from personal_agent.skills.importing import prepare_import
 
 
 async def run_cli(args: argparse.Namespace) -> int:
@@ -59,11 +61,36 @@ async def run_cli(args: argparse.Namespace) -> int:
                 return 0
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Talk to your personal agent")
     parser.add_argument("--conversation", help="Resume a saved conversation ID")
     parser.add_argument("--message", help="Send one message and exit")
-    args = parser.parse_args()
+    commands = parser.add_subparsers(dest="command")
+    skills = commands.add_parser("skills", help="Prepare skills for local startup and deployment")
+    actions = skills.add_subparsers(dest="skill_action", required=True)
+    importer = actions.add_parser("import", help="Package metadata.json and instructions.md")
+    importer.add_argument("directory", type=Path)
+    importer.add_argument("--activate", action="store_true", help="Activate on the next startup")
+    importer.add_argument("--bundle", type=Path, default=Path("config/skills.json"))
+    args = parser.parse_args(argv)
+    if args.command == "skills":
+        try:
+            skill = prepare_import(
+                args.directory,
+                args.bundle,
+                activate=args.activate,
+                available_tool_ids=skill_tool_ids(),
+            )
+        except (OSError, ValueError) as exc:
+            print(f"Skill import failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        action = "saved and activated" if skill.activate else "saved without changing activation"
+        print(f"Packaged {skill.skill_id} in {args.bundle}.")
+        print(f"On the next app startup, changed content will be {action} in that app's database.")
+        print(
+            "Commit the bundle with your source files, then deploy. No database was changed here."
+        )
+        raise SystemExit(0)
     try:
         status = asyncio.run(run_cli(args))
     except KeyboardInterrupt:

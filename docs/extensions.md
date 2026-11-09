@@ -15,9 +15,11 @@ Saved-workflow execution, schedule management, and sandbox execution remain cont
 only. Skills that require unavailable tools are rejected or excluded from retrieval.
 Tool-less skills can teach conversational procedures, tone and response structure.
 
-For an editable starting point, see the [stock research skill scaffold](stock-research.md).
-Its metadata and instructions are source templates; they become available to the agent
-only after being saved and activated in the intended runtime.
+For an editable starting point, see the [stock research skill](stock-research.md).
+The CLI packages metadata and instructions into a deployable bundle. Startup imports
+changed entries into the configured owner's database, with optional activation; unchanged
+packages preserve subsequent chat edits, rollbacks, and archives. See [file-based skill
+development](skills.md) for the command and revision behavior.
 
 ## Selecting and loading skills
 

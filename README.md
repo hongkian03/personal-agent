@@ -27,6 +27,8 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. The agent
   selects from a compact catalog and loads full instructions on demand; exact skill names
   and IDs load directly. Skills are scoped to the owner and available tools.
+  Editable skill files can be packaged through the CLI and imported into each runtime's
+  database on startup, with optional activation and duplicate revision prevention.
 - **Web research:** Search the public web during conversations through OpenAI's hosted
   search tool, with readable source links and a configurable search budget per turn.
 - **IBKR portfolio reporting:** Automatically sync holdings, cash balances, closing prices,

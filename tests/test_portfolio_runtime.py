@@ -22,6 +22,7 @@ def settings_for(tmp_path, **overrides):
         "model_api_key": None,
         "api_token": "runtime-test-token",
         "data_dir": tmp_path,
+        "skill_bundle_path": tmp_path / "no-bundle.json",
         "database_url": None,
         "owner_id": "runtime-test-owner",
         "ibkr_flex_token": None,

@@ -279,6 +279,7 @@ def settings_for(tmp_path, **overrides):
         model_api_key="not-a-real-key",
         database_url=None,
         data_dir=tmp_path,
+        skill_bundle_path=tmp_path / "no-bundle.json",
         owner_id="search-test-owner",
         ibkr_flex_token=None,
         ibkr_flex_query_id=None,

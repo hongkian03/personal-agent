@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from personal_agent.agent.graph import build_graph
+from personal_agent.agent.management import SKILL_TOOL_IDS
 from personal_agent.agent.service import AgentRuntime
 from personal_agent.agent.tools import ToolDefinition, ToolError, ToolRegistry
 from personal_agent.capabilities.motivation.manifest import CAPABILITY as MOTIVATION
@@ -22,6 +23,7 @@ from personal_agent.core.registry import CapabilityRegistry
 from personal_agent.integrations.ibkr.client import IBKRFlexClient
 from personal_agent.integrations.llm.provider import OpenAIModel
 from personal_agent.skills.discovery import available_skills, skill_details, skill_summary
+from personal_agent.skills.importing import apply_bundle
 from personal_agent.skills.service import SkillService
 from personal_agent.storage.database import open_storage
 
@@ -35,19 +37,18 @@ def build_registry(*, web_search_enabled: bool = True) -> CapabilityRegistry:
     return registry
 
 
+def skill_tool_ids(*, portfolio_enabled: bool = True) -> set[str]:
+    """Application tools supported by skill imports and conversational authoring."""
+    return set(SKILL_TOOL_IDS) | {"runtime.current_time"} | (
+        set(PORTFOLIO.tool_ids) if portfolio_enabled else set()
+    )
+
+
 def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegistry:
     tools = ToolRegistry(timeout_seconds=settings.tool_timeout_seconds)
-    management_ids = {
-        "runtime.current_time",
-        "skills.list",
-        "skills.load",
-        "skills.save_revision",
-        "skills.activate",
-        "skills.archive",
-    }
     service = SkillService(
         repository,
-        available_tool_ids=management_ids | (set(PORTFOLIO.tool_ids) if portfolio else set()),
+        available_tool_ids=skill_tool_ids(portfolio_enabled=portfolio is not None),
     )
 
     def register(name, description, properties, required, scope, handler, *, mutates=False):
@@ -239,6 +240,16 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 sync_interval_seconds=settings.portfolio_sync_interval_seconds,
             )
             tools = build_tools(repository=storage.skills, settings=settings, portfolio=portfolio)
+            imported = await apply_bundle(
+                settings.skill_bundle_path,
+                service=SkillService(storage.skills, skill_tool_ids()),
+                owner_id=settings.owner_id,
+            )
+            for skill_id, revision, changed in imported:
+                if changed:
+                    logging.getLogger(__name__).info(
+                        "skill_imported skill=%s revision=%s", skill_id, revision
+                    )
             graph = None
             if settings.model_api_key:
                 model = OpenAIModel(

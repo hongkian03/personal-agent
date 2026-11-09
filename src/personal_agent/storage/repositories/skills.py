@@ -47,6 +47,14 @@ revisions = Table(
     Column("required_tool_ids", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+imports = Table(
+    "skill_imports",
+    metadata,
+    Column("owner_id", String(200), primary_key=True),
+    Column("skill_id", String(120), primary_key=True),
+    Column("source_digest", String(64), nullable=False),
+    Column("revision", Integer, nullable=False),
+)
 
 
 class SkillConflictError(ValueError):
@@ -71,6 +79,74 @@ class SqlSkillRepository:
 
     async def initialize(self) -> None:
         await asyncio.to_thread(metadata.create_all, self.engine)
+
+    async def import_revision(
+        self, skill: SkillRevision, *, source_digest: str, activate: bool
+    ) -> tuple[int, bool]:
+        def apply():
+            try:
+                with self.engine.begin() as connection:
+                    identity = _identity(skill.owner_id, skill.skill_id)
+                    import_identity = and_(
+                        imports.c.owner_id == skill.owner_id,
+                        imports.c.skill_id == skill.skill_id,
+                    )
+                    previous = (
+                        connection.execute(select(imports).where(import_identity))
+                        .mappings()
+                        .first()
+                    )
+                    if previous is not None and previous["source_digest"] == source_digest:
+                        # Preserve conversational edits, rollbacks and archives on restarts.
+                        return previous["revision"], False
+                    head = connection.execute(select(heads).where(identity)).mappings().first()
+                    revision = 1 if head is None else head["latest_revision"] + 1
+                    if head is None:
+                        connection.execute(
+                            insert(heads).values(
+                                owner_id=skill.owner_id,
+                                skill_id=skill.skill_id,
+                                latest_revision=revision,
+                                active_revision=revision if activate else None,
+                            )
+                        )
+                    else:
+                        values = {"latest_revision": revision}
+                        if activate:
+                            values["active_revision"] = revision
+                        result = connection.execute(
+                            update(heads)
+                            .where(identity, heads.c.latest_revision == head["latest_revision"])
+                            .values(**values)
+                        )
+                        if result.rowcount != 1:
+                            raise SkillConflictError("Skill changed during import; retry")
+                    connection.execute(
+                        insert(revisions).values(
+                            owner_id=skill.owner_id,
+                            skill_id=skill.skill_id,
+                            revision=revision,
+                            name=skill.name,
+                            description=skill.description,
+                            instructions=skill.instructions,
+                            required_tool_ids=list(skill.required_tool_ids),
+                            created_at=skill.created_at,
+                        )
+                    )
+                    stamp = {"source_digest": source_digest, "revision": revision}
+                    if previous is None:
+                        connection.execute(
+                            insert(imports).values(
+                                owner_id=skill.owner_id, skill_id=skill.skill_id, **stamp
+                            )
+                        )
+                    else:
+                        connection.execute(update(imports).where(import_identity).values(**stamp))
+                    return revision, True
+            except IntegrityError as error:
+                raise SkillConflictError("Concurrent skill import; retry") from error
+
+        return await asyncio.to_thread(apply)
 
     async def list_active(self, *, owner_id: str) -> tuple[SkillRevision, ...]:
         def read():

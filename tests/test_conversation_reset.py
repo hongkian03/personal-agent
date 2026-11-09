@@ -38,6 +38,7 @@ def settings_for(tmp_path, owner="alice", **overrides):
         api_token="test-api-token",
         database_url=None,
         data_dir=tmp_path,
+        skill_bundle_path=tmp_path / "no-bundle.json",
         owner_id=owner,
         ibkr_flex_token=None,
         ibkr_flex_query_id=None,

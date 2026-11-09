@@ -55,6 +55,7 @@ def test_custom_persona_reaches_chat_and_morning_and_reloads(monkeypatch, tmp_pa
             ibkr_flex_token=None,
             ibkr_flex_query_id=None,
             data_dir=tmp_path / "data",
+            skill_bundle_path=tmp_path / "no-bundle.json",
             persona_path=profile,
         )
         async with bootstrap.open_runtime(settings) as runtime:
