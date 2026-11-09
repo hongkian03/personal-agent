@@ -90,6 +90,14 @@ Generic progress messages are not appended to model history or saved in checkpoi
 Raw provider reasoning, tool arguments/results, credentials, and search queries are not
 included in user-facing status payloads.
 
+API warning logs include the application-authored failure message, exception type,
+underlying cause type, and source file/line locations. Streaming failures also include
+the run and conversation IDs so they can be matched to model/tool execution logs.
+Unexpected exception strings, provider response bodies, and full tracebacks are omitted
+because they may contain private request data. For example, a `ModelError` warning can
+now distinguish an incomplete response from an empty reply or an interrupted stream;
+its cause type and location help identify SDK, network, or application failures.
+
 ## Deployment and checks
 
 Deploy the API before the updated bridge so `/chat/stream` is available when the bridge

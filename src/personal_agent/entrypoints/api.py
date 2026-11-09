@@ -5,6 +5,8 @@ import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
+from traceback import extract_tb
 from typing import Annotated
 
 import anyio
@@ -14,6 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from starlette.types import Receive, Scope, Send
 
+from personal_agent.agent.models import ModelError
 from personal_agent.agent.progress import ChatEventBuffer
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
 from personal_agent.bootstrap import open_runtime
@@ -21,6 +24,44 @@ from personal_agent.bootstrap import open_runtime
 logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
 STREAM_HEARTBEAT_SECONDS = 15
+
+
+def log_failure(
+    event: str,
+    exc: Exception,
+    *,
+    run_id: str | None = None,
+    conversation_id: str | None = None,
+) -> None:
+    """Log application-authored explanations and locations without provider payloads."""
+    if isinstance(exc, (ModelError, ChatValidationError, RuntimeConfigurationError)):
+        # These exceptions contain application-authored messages. Provider exception
+        # strings and tracebacks can contain prompts, response bodies, or credentials.
+        message = str(exc)
+    elif isinstance(exc, TimeoutError):
+        message = "Request exceeded its execution deadline."
+    else:
+        message = "Unexpected application error; inspect error_type, cause_type, and source."
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
+
+    def location(error: BaseException | None) -> str:
+        frames = extract_tb(error.__traceback__) if error is not None else []
+        return f"{Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else "-"
+
+    logger.warning(
+        "%s error_type=%s message=%s cause_type=%s source=%s cause_source=%s "
+        "run_id=%s conversation_id=%s",
+        event,
+        type(exc).__name__,
+        json.dumps(message[:500], ensure_ascii=False),
+        type(cause).__name__ if cause is not None else "-",
+        location(exc),
+        location(cause),
+        run_id or "-",
+        conversation_id or "-",
+    )
 
 
 class ChatStreamingResponse(StreamingResponse):
@@ -92,15 +133,17 @@ def create_app() -> FastAPI:
             result = await request.app.state.runtime.chat(
                 message=payload.message, conversation_id=payload.conversation_id
             )
-        except RuntimeConfigurationError:
+        except RuntimeConfigurationError as exc:
+            log_failure("chat_failed", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=503, detail="Agent is not configured") from None
         except ChatValidationError as exc:
+            log_failure("chat_failed", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=400, detail=str(exc)) from None
-        except TimeoutError:
+        except TimeoutError as exc:
+            log_failure("chat_failed", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=504, detail="Agent request timed out") from None
         except Exception as exc:
-            # Avoid exposing provider responses, credentials, messages or tracebacks.
-            logger.warning("chat_failed error_type=%s", type(exc).__name__)
+            log_failure("chat_failed", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=502, detail="Agent request failed") from None
         return ChatResponse(
             conversation_id=result.conversation_id, run_id=result.run_id, text=result.text
@@ -111,9 +154,11 @@ def create_app() -> FastAPI:
         runtime = request.app.state.runtime
         try:
             runtime.validate_chat(payload.message, payload.conversation_id)
-        except RuntimeConfigurationError:
+        except RuntimeConfigurationError as exc:
+            log_failure("chat_stream_rejected", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=503, detail="Agent is not configured") from None
         except ChatValidationError as exc:
+            log_failure("chat_stream_rejected", exc, conversation_id=payload.conversation_id)
             raise HTTPException(status_code=400, detail=str(exc)) from None
 
         async def events():
@@ -130,7 +175,15 @@ def create_app() -> FastAPI:
                     raise
                 except Exception as exc:
                     # Runtime emits a safe terminal error before re-raising.
-                    logger.warning("chat_stream_failed error_type=%s", type(exc).__name__)
+                    failure = buffer.terminal or buffer.started
+                    log_failure(
+                        "chat_stream_failed", exc,
+                        run_id=failure.run_id if failure is not None else None,
+                        conversation_id=(
+                            failure.conversation_id if failure is not None
+                            else payload.conversation_id
+                        ),
+                    )
 
             task = asyncio.create_task(produce())
             try:
@@ -167,7 +220,7 @@ def create_app() -> FastAPI:
         try:
             text = await morning.claim_due()
         except Exception as exc:
-            logger.warning("morning_generation_failed error_type=%s", type(exc).__name__)
+            log_failure("morning_generation_failed", exc)
             raise HTTPException(status_code=502, detail="Morning message unavailable") from None
         return Response(status_code=204) if text is None else {"text": text}
 
@@ -182,7 +235,7 @@ def create_app() -> FastAPI:
         try:
             return await request.app.state.runtime.portfolio.sync(force=True)
         except Exception as exc:
-            logger.warning("portfolio_refresh_failed error_type=%s", type(exc).__name__)
+            log_failure("portfolio_refresh_failed", exc)
             raise HTTPException(status_code=502, detail="Portfolio refresh unavailable") from None
 
     @app.post("/portfolio/morning/claim", response_model=None, dependencies=[Depends(authorize)])
@@ -193,7 +246,7 @@ def create_app() -> FastAPI:
         try:
             text = await morning.claim_due()
         except Exception as exc:
-            logger.warning("portfolio_briefing_failed error_type=%s", type(exc).__name__)
+            log_failure("portfolio_briefing_failed", exc)
             raise HTTPException(status_code=502, detail="Portfolio briefing unavailable") from None
         return Response(status_code=204) if text is None else {"text": text}
 
