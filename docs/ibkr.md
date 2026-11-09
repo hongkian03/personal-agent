@@ -128,7 +128,8 @@ symbols can be changed through the environment setting without changing either f
 ## Dates, failures, and morning delivery
 
 The morning claim uses the 8:00–8:15 a.m. weekday window in `PERSONAL_AGENT_TIMEZONE`.
-Both proactive portfolio briefings and motivational messages skip Saturday and Sunday.
+Portfolio briefings skip Saturday and Sunday; motivational messages run every day,
+including weekends, during the same 8:00–8:15 a.m. window.
 Background Flex sync continues every day, including weekends. Monday delivery is allowed
 even when the latest available report is still Friday's report.
 It uses the latest stored report and states its date. It waits for a report before

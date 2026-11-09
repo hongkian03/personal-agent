@@ -2,13 +2,16 @@
 
 import asyncio
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
 
 from personal_agent.agent.tools import ToolError, ToolRegistry
-from personal_agent.capabilities.motivation.workflows import morning_date
+from personal_agent.capabilities.motivation import workflows as motivation
+from personal_agent.capabilities.motivation.workflows import MorningMessage, morning_date
 from personal_agent.capabilities.portfolio import briefing
 from personal_agent.capabilities.portfolio.briefing import (
     PortfolioMorningMessage,
@@ -302,7 +305,7 @@ def test_concurrent_morning_claims_only_return_one_message(engine, monkeypatch):
     run(check())
 
 
-def test_weekends_skip_both_messages_but_sync_and_monday_continue(engine, monkeypatch):
+def test_weekends_send_motivation_only_but_sync_and_monday_continue(engine, monkeypatch):
     zone = ZoneInfo("America/New_York")
 
     class Clock:
@@ -320,6 +323,7 @@ def test_weekends_skip_both_messages_but_sync_and_monday_continue(engine, monkey
             return report(day=date(2026, 11, 6))
 
     monkeypatch.setattr(briefing, "datetime", Clock)
+    monkeypatch.setattr(motivation, "datetime", Clock)
 
     async def check():
         repository = PortfolioRepository(engine)
@@ -329,17 +333,32 @@ def test_weekends_skip_both_messages_but_sync_and_monday_continue(engine, monkey
         client = Client()
         service = PortfolioService(repository, client, "alice")
         workflow = PortfolioMorningMessage(service, morning, "alice", zone)
+        model = SimpleNamespace(
+            respond=AsyncMock(return_value=SimpleNamespace(text="One small step.", tool_calls=()))
+        )
+        encouragement = MorningMessage(model, morning, "alice", zone)
         for day in (7, 8):
             Clock.current = datetime(2026, 11, day, 8, 0, tzinfo=zone)
-            assert morning_date(Clock.current) is None
+            assert await encouragement.claim_due() == "One small step."
+            assert await encouragement.claim_due() is None
             await service.sync(force=True)
             assert await workflow.claim_due() is None
             assert await morning.recent(workflow.claim_owner) == {}
         assert client.calls == 2
+        assert model.respond.await_count == 2
         Clock.current = datetime(2026, 11, 9, 8, 0, tzinfo=zone)
         assert morning_date(Clock.current) == date(2026, 11, 9)
+        assert await encouragement.claim_due() == "One small step."
         text = await workflow.claim_due()
         assert text is not None and "2026-11-06" in text
         assert await workflow.claim_due() is None
 
     run(check())
+
+
+@pytest.mark.parametrize("day", range(2, 9))
+def test_daily_motivation_keeps_morning_window(day):
+    zone = ZoneInfo("America/New_York")
+    for hour, minute, due in ((7, 59, False), (8, 0, True), (8, 14, True), (8, 15, False)):
+        now = datetime(2026, 11, day, hour, minute, tzinfo=zone)
+        assert morning_date(now) == (now.date() if due else None)

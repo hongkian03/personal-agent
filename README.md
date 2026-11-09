@@ -35,7 +35,7 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   IBKR variables and keys live in Railway. The example env isn't the most updated.
 - **Morning portfolio briefings:** Weekday iMessage summaries of portfolio value,
   performance, major holdings, and P&L contributors, with report dates and freshness information.
-- **Morning encouragement:** Short weekday motivational messages guided by the shared
+- **Morning encouragement:** Short daily motivational messages, including weekends, guided by the shared
   persona and recent messages for variety.
 - **Controlled tool access:** Validated tool arguments, explicit permission scopes,
   owner-scoped storage, and messaging restricted to the configured sender.

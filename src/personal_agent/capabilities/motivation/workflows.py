@@ -16,7 +16,7 @@ class MorningMessages(Protocol):
 
 
 def morning_date(now: datetime) -> date | None:
-    return now.date() if now.weekday() < 5 and now.hour == 8 and now.minute < 15 else None
+    return now.date() if now.hour == 8 and now.minute < 15 else None
 
 
 class MorningMessage:
