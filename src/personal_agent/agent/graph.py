@@ -9,7 +9,8 @@ from typing import Annotated, Any, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from personal_agent.agent.models import ChatModel
+from personal_agent.agent.models import ActivityEvent, ChatModel
+from personal_agent.agent.progress import report_activity
 from personal_agent.agent.tools import ToolError, ToolRegistry
 from personal_agent.core.context import ExecutionContext
 
@@ -59,12 +60,14 @@ def build_graph(
                 "Use the sources already retrieved, state any remaining uncertainty, "
                 "and do not claim to have performed additional searches."
             )
+        report_activity(ActivityEvent("model_working"))
         reply = await model.respond(
             items=state.get("items", []),
             instructions=instructions,
             tools=tools.definitions(context),
             hosted_tools=hosted_tools,
             max_hosted_tool_calls=max(1, remaining_calls),
+            on_activity=report_activity,
         )
         return {
             "items": reply.items,
@@ -87,8 +90,10 @@ def build_graph(
                 if not isinstance(arguments, dict):
                     raise ToolError("Tool arguments must be an object")
                 async with asyncio.timeout(tool_timeout_seconds):
+                    tool_id = tools.resolve_name(call["name"])
+                    report_activity(ActivityEvent("tool_started", tool_id=tool_id))
                     result = await tools.invoke(
-                        tool_id=tools.resolve_name(call["name"]),
+                        tool_id=tool_id,
                         arguments=arguments,
                         context=context,
                     )
@@ -100,6 +105,8 @@ def build_graph(
             except Exception:
                 logger.warning("tool_execution_failed run=%s", context.run_id)
                 output = json.dumps({"ok": False, "error": "Tool execution failed"})
+            finally:
+                report_activity(ActivityEvent("tool_completed"))
             outputs.append(
                 {"type": "function_call_output", "call_id": call["call_id"], "output": output}
             )

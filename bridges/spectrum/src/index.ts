@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { setInterval } from "node:timers/promises";
 import { imessage } from "@spectrum-ts/imessage";
 import { Spectrum, markdown } from "spectrum-ts";
+import { ChatDelivery, ChatStreamError, readChatEvents, withDeadline } from "./chat-stream.ts";
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -11,7 +12,8 @@ function requiredEnv(name: string): string {
 
 const allowedSender = requiredEnv("PERSONAL_AGENT_ALLOWED_SENDER_ID").toLowerCase();
 const apiToken = requiredEnv("PERSONAL_AGENT_API_TOKEN");
-const chatUrl = new URL("/chat", process.env.PERSONAL_AGENT_API_URL ?? "http://127.0.0.1:8000");
+const chatUrl = new URL("/chat/stream", process.env.PERSONAL_AGENT_API_URL ?? "http://127.0.0.1:8000");
+const typingEnabled = process.env.PERSONAL_AGENT_TYPING_ENABLED !== "false";
 const projectId = requiredEnv("PROJECT_ID");
 const app = await Spectrum({
   projectId,
@@ -85,38 +87,54 @@ for await (const [space, message] of app.messages) {
     .update(JSON.stringify([projectId, space.id, allowedSender]))
     .digest("hex");
 
-  try {
-    // Typing is best-effort: provider failures must not prevent an agent reply.
-    await space.startTyping().catch(() => {
+  const controller = new AbortController();
+  let deadline = setTimeout(() => controller.abort(), 190_000);
+  const startTyping = async (): Promise<void> => {
+    if (typingEnabled) await withDeadline(space.startTyping(), 3000).catch(() => {
       console.warn("Could not start iMessage typing indicator.");
     });
+  };
+  const delivery = new ChatDelivery(async (reply, terminal) => {
+    await space.send(markdown(reply));
+    // Sending an interim message can clear typing on the recipient's device.
+    if (!terminal && !delivery.hasTerminal) await startTyping();
+  }, (_error, terminal) => {
+    console.error(`Could not send ${terminal ? "agent reply" : "progress message"} to iMessage.`);
+  });
+
+  try {
+    // Typing is best-effort: provider failures must not prevent an agent reply.
+    await startTyping();
     const response = await fetch(chatUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiToken}`,
         "Content-Type": "application/json",
+        Accept: "text/event-stream",
       },
       body: JSON.stringify({ message: text, conversation_id: conversationId }),
       redirect: "error",
-      signal: AbortSignal.timeout(190_000),
+      signal: controller.signal,
     });
-    if (!response.ok) {
-      console.error(`Agent API returned HTTP ${response.status}`);
-      continue;
+    for await (const event of readChatEvents(response, conversationId)) {
+      if (event.kind === "started") {
+        clearTimeout(deadline);
+        // Follow the API's whole-turn deadline, with room for its terminal event.
+        deadline = setTimeout(() => controller.abort(), (event.timeout_seconds! + 10) * 1000);
+      }
+      delivery.push(event);
     }
-    const reply: unknown = await response.json();
-    if (
-      typeof reply !== "object" || reply === null ||
-      !("text" in reply) || typeof reply.text !== "string" || !reply.text.trim()
-    ) {
-      throw new Error("Agent API returned an empty or invalid reply");
-    }
-    await space.send(markdown(reply.text));
   } catch (error) {
     console.error("Could not reply to iMessage:", error instanceof Error ? error.name : "unknown error");
+    delivery.finishWith(error instanceof ChatStreamError ? error.userMessage
+      : controller.signal.aborted
+        ? "The agent request timed out. Please try again. Your request was not automatically replayed."
+        : "I lost the connection before receiving a complete answer. Please try again. Your request was not automatically replayed.");
   } finally {
+    clearTimeout(deadline);
+    await delivery.finished();
     // Also runs on HTTP errors, invalid replies, send failures, and timeouts.
-    await space.stopTyping().catch(() => {
+    if (typingEnabled) await withDeadline(space.stopTyping(), 3000).catch(() => {
       console.warn("Could not stop iMessage typing indicator.");
     });
   }

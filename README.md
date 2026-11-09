@@ -20,7 +20,9 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 
 - **Conversational assistant:** Chat through iMessage, the CLI, or an authenticated HTTP
   API, with persistent conversation history, conversation resets, and access to registered tools.
-  iMessage shows a typing indicator while the agent prepares and sends a reply.
+  Longer requests through iMessage, the CLI, or streaming HTTP receive delayed acknowledgments
+  and occasional activity updates, followed by a complete answer or an explicit failure message.
+  iMessage supports an independently configurable typing indicator.
   Chat replies and morning messages use Spectrum's Markdown renderer for native iMessage text styling.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,
   communication preferences, and personal context for conversations. Tunable to anyone's preference.
@@ -30,7 +32,8 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   Editable skill files can be packaged through the CLI and imported into each runtime's
   database on startup, with optional activation and duplicate revision prevention.
 - **Web research:** Search the public web during conversations through OpenAI's hosted
-  search tool, with readable source links and a configurable search budget per turn.
+  search tool, with streamed search activity, readable source links, and a configurable
+  search budget per turn.
 - **IBKR portfolio reporting:** Automatically sync holdings, cash balances, closing prices,
   reported performance, and dividend activity from a saved Activity Flex Query. Dated
   snapshots persist as the account's holdings change. I built it on IBKR just because that's what I use.

@@ -9,6 +9,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from personal_agent.agent.models import ActivityEvent
+from personal_agent.agent.progress import (
+    ChatEventCallback,
+    ProgressReporter,
+    activity_callback,
+    report_activity,
+)
 from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
@@ -57,13 +64,68 @@ class AgentRuntime:
         # Fixed stripes bound memory while serializing each conversation in one process.
         self._locks = [asyncio.Lock() for _ in range(64)]
 
-    async def chat(self, message: str, conversation_id: str | None = None) -> ChatResult:
+    def validate_chat(self, message: str, conversation_id: str | None = None) -> None:
         if not message.strip() or len(message) > 20000:
             raise ChatValidationError("Message must contain 1–20000 characters.")
-        conversation_id = conversation_id or uuid4().hex
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", conversation_id):
+        if conversation_id is not None and not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,128}", conversation_id
+        ):
             raise ChatValidationError("Invalid conversation ID.")
+        if message.strip() == "/new":
+            if self.checkpointer is None:
+                raise RuntimeConfigurationError("Conversation storage is not configured.")
+        elif self.graph is None:
+            raise RuntimeConfigurationError("Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY.")
+
+    async def chat(
+        self,
+        message: str,
+        conversation_id: str | None = None,
+        *,
+        on_event: ChatEventCallback | None = None,
+    ) -> ChatResult:
+        self.validate_chat(message, conversation_id)
+        conversation_id = conversation_id or uuid4().hex
         run_id = uuid4().hex
+        progress = ProgressReporter(
+            run_id=run_id,
+            conversation_id=conversation_id,
+            on_event=on_event,
+            enabled=self.settings.progress_enabled,
+            ack_delay=self.settings.progress_ack_delay_seconds,
+            interval=self.settings.progress_interval_seconds,
+            max_updates=self.settings.progress_max_updates,
+            timeout_seconds=self.settings.chat_timeout_seconds,
+        )
+        progress.start()
+        token = activity_callback.set(progress.activity)
+        try:
+            async with asyncio.timeout(self.settings.chat_timeout_seconds):
+                result = await self._execute_chat(message, conversation_id, run_id)
+            progress.finish("result", text=result.text)
+            return result
+        except TimeoutError:
+            progress.finish(
+                "error", code="timeout",
+                text="The agent request timed out. It will not be retried automatically.",
+            )
+            raise
+        except ChatValidationError as exc:
+            progress.finish("error", code="invalid_conversation", text=str(exc))
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            progress.finish(
+                "error", code="request_failed",
+                text="I couldn’t complete your request. It will not be retried automatically.",
+            )
+            raise
+        finally:
+            activity_callback.reset(token)
+            await progress.aclose()
+
+    async def _execute_chat(self, message: str, conversation_id: str, run_id: str) -> ChatResult:
         # Prevent ambiguous owner/conversation concatenation and scope persisted checkpoints.
         thread_id = hashlib.sha256(
             json.dumps([self.settings.owner_id, conversation_id]).encode()
@@ -73,6 +135,7 @@ class AgentRuntime:
                 raise RuntimeConfigurationError("Conversation storage is not configured.")
             async with asyncio.timeout(self.settings.chat_timeout_seconds):
                 async with self._locks[int(thread_id[:8], 16) % len(self._locks)]:
+                    report_activity(ActivityEvent("model_working"))
                     await self.checkpointer.adelete_thread(thread_id)
             return ChatResult(
                 conversation_id,
@@ -98,6 +161,7 @@ class AgentRuntime:
         }
         async with asyncio.timeout(self.settings.chat_timeout_seconds):
             async with self._locks[int(thread_id[:8], 16) % len(self._locks)]:
+                report_activity(ActivityEvent("model_working"))
                 snapshot = await self.graph.aget_state(config)
                 if snapshot.next:
                     raise ChatValidationError(

@@ -1,19 +1,37 @@
 """Authenticated HTTP access to the same conversational runtime used by the CLI."""
 
+import asyncio
+import json
 import logging
 import secrets
 from contextlib import asynccontextmanager
 from typing import Annotated
 
+import anyio
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
+from starlette.types import Receive, Scope, Send
 
+from personal_agent.agent.progress import ChatEventBuffer
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
 from personal_agent.bootstrap import open_runtime
 
 logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
+STREAM_HEARTBEAT_SECONDS = 15
+
+
+class ChatStreamingResponse(StreamingResponse):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # ASGI 2.4 send errors occur outside the suspended iterator. Close it
+            # explicitly rather than waiting for garbage collection to cancel work.
+            with anyio.CancelScope(shield=True):
+                await self.body_iterator.aclose()
 
 
 class ChatRequest(BaseModel):
@@ -86,6 +104,59 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail="Agent request failed") from None
         return ChatResponse(
             conversation_id=result.conversation_id, run_id=result.run_id, text=result.text
+        )
+
+    @app.post("/chat/stream", dependencies=[Depends(authorize)])
+    async def stream_chat(payload: ChatRequest, request: Request) -> StreamingResponse:
+        runtime = request.app.state.runtime
+        try:
+            runtime.validate_chat(payload.message, payload.conversation_id)
+        except RuntimeConfigurationError:
+            raise HTTPException(status_code=503, detail="Agent is not configured") from None
+        except ChatValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+
+        async def events():
+            buffer = ChatEventBuffer()
+
+            async def produce():
+                try:
+                    await runtime.chat(
+                        message=payload.message,
+                        conversation_id=payload.conversation_id,
+                        on_event=buffer.put,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    # Runtime emits a safe terminal error before re-raising.
+                    logger.warning("chat_stream_failed error_type=%s", type(exc).__name__)
+
+            task = asyncio.create_task(produce())
+            try:
+                while True:
+                    try:
+                        async with asyncio.timeout(STREAM_HEARTBEAT_SECONDS):
+                            event = await buffer.get()
+                    except TimeoutError:
+                        yield ": heartbeat\n\n"
+                        continue
+                    data = json.dumps(event.payload(), ensure_ascii=False)
+                    yield f"id: {event.sequence}\nevent: {event.kind}\ndata: {data}\n\n"
+                    if event.kind in {"result", "error"}:
+                        break
+            finally:
+                # Shield cleanup from Starlette's disconnect cancellation scope.
+                with anyio.CancelScope(shield=True):
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+        return ChatStreamingResponse(
+            events(), media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @app.post("/morning/claim", response_model=None, dependencies=[Depends(authorize)])

@@ -41,6 +41,12 @@ Morning delivery is enabled on the Railway `spectrum` service. Set its
 Keep only one bridge connected to the Photon project. Stop a local bridge when switching
 to Railway to avoid competing message consumers.
 
+Interactive progress timing is configured on `agent-api`, while
+`PERSONAL_AGENT_TYPING_ENABLED` is configured on `spectrum`. Both default to enabled;
+see [conversation progress](progress.md) for timing variables and the streaming contract.
+Deploy API changes before bridge changes so `/chat/stream` is available when the updated
+bridge switches to it. Existing `/chat` JSON clients remain compatible.
+
 ## Deploy source changes
 
 From the repository root, with the Railway CLI authenticated:

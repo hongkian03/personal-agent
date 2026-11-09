@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     model: str = "gpt-6-luna"
     model_timeout_seconds: float = Field(default=60, gt=0, le=600)
     chat_timeout_seconds: float = Field(default=180, gt=0, le=1800)
+    progress_enabled: bool = True
+    progress_ack_delay_seconds: float = Field(default=5, gt=0, le=1800)
+    progress_interval_seconds: float = Field(default=30, gt=0, le=1800)
+    progress_max_updates: int = Field(default=5, ge=0, le=100)
     tool_timeout_seconds: float = Field(default=30, gt=0, le=300)
     max_tool_rounds: int = Field(default=8, ge=1, le=32)
     max_output_tokens: int = Field(default=2048, ge=128, le=32768)

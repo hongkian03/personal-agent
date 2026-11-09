@@ -7,8 +7,13 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from openai import BadRequestError
-from openai.types.responses import Response
+from openai import BadRequestError, Omit
+from openai.types.responses import (
+    Response,
+    ResponseCompletedEvent,
+    ResponseCreatedEvent,
+    ResponseIncompleteEvent,
+)
 from pydantic import ValidationError
 
 from personal_agent import bootstrap
@@ -69,9 +74,31 @@ def function_tool():
     )
 
 
+class ResponseStream:
+    """Synthetic SSE events consumed by the actual SDK stream accumulator."""
+
+    def __init__(self, response):
+        self.final = response
+        self.response = httpx.Response(200)
+
+    async def __aiter__(self):
+        yield ResponseCreatedEvent(
+            type="response.created",
+            sequence_number=0,
+            response=self.final.model_copy(update={"status": "in_progress", "output": []}),
+        )
+        completed = self.final.status == "completed"
+        event = ResponseCompletedEvent if completed else ResponseIncompleteEvent
+        yield event(
+            type="response.completed" if completed else "response.incomplete",
+            sequence_number=1,
+            response=self.final,
+        )
+
+
 async def invoke_model(response, *, tools=(), **kwargs):
     model = OpenAIModel(api_key="not-a-real-key", model="gpt-6-luna", web_search_context_size="low")
-    create = AsyncMock(return_value=response)
+    create = AsyncMock(return_value=ResponseStream(response))
     model.client.responses.create = create
     try:
         reply = await model.respond(
@@ -124,6 +151,7 @@ def test_hosted_search_coexists_with_functions_and_preserves_response_items():
             max_hosted_tool_calls=2,
         )
         request = create.await_args.kwargs
+        assert request["stream"] is True
         assert request["tools"] == [
             {
                 "type": "function",
@@ -151,7 +179,7 @@ def test_no_hosted_tools_leaves_plain_generation_without_search():
         assert reply.text == "Hello."
         assert reply.hosted_tool_calls == 0
         assert create.await_args.kwargs["tools"] == []
-        assert "max_tool_calls" not in create.await_args.kwargs
+        assert isinstance(create.await_args.kwargs["max_tool_calls"], Omit)
 
     asyncio.run(check())
 

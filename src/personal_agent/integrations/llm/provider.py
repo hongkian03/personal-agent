@@ -1,12 +1,22 @@
 """OpenAI Responses API adapter; the graph owns conversation persistence."""
 
+import asyncio
+import logging
 from typing import Any
 
 from openai import AsyncOpenAI, OpenAIError
 
-from personal_agent.agent.models import ModelError, ModelReply, ToolCall
+from personal_agent.agent.models import (
+    ActivityCallback,
+    ActivityEvent,
+    ModelError,
+    ModelReply,
+    ToolCall,
+)
 from personal_agent.agent.tools import ToolDefinition
 from personal_agent.integrations.llm.citations import render_cited_text
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIModel:
@@ -20,6 +30,7 @@ class OpenAIModel:
         web_search_context_size: str = "medium",
     ) -> None:
         self.model = model
+        self.timeout_seconds = timeout_seconds
         self.max_output_tokens = max_output_tokens
         self.web_search_context_size = web_search_context_size
         self.client = AsyncOpenAI(api_key=api_key, timeout=timeout_seconds, max_retries=2)
@@ -35,6 +46,7 @@ class OpenAIModel:
         tools: tuple[ToolDefinition, ...],
         hosted_tools: frozenset[str] = frozenset(),
         max_hosted_tool_calls: int = 3,
+        on_activity: ActivityCallback | None = None,
     ) -> ModelReply:
         if hosted_tools - {"web_search"}:
             raise ModelError("Unsupported hosted tool requested")
@@ -65,13 +77,55 @@ class OpenAIModel:
                 {"type": "web_search", "search_context_size": self.web_search_context_size}
             )
             request["max_tool_calls"] = max_hosted_tool_calls
+        last_phase: str | None = None
+
+        def emit(phase: str) -> None:
+            nonlocal last_phase
+            if phase == last_phase:
+                return
+            last_phase = phase
+            if on_activity is not None:
+                try:
+                    on_activity(ActivityEvent(phase))
+                except Exception:
+                    # Optional progress delivery must not prevent a completed reply.
+                    logger.warning("model_activity_callback_failed")
+
+        emit("model_working")
         try:
-            response = await self.client.responses.create(**request)
+            # The SDK's network timeout is an inactivity limit. Bound the entire call,
+            # including connection retries and all streamed events, independently.
+            async with asyncio.timeout(self.timeout_seconds):
+                async with self.client.responses.stream(**request) as stream:
+                    async for event in stream:
+                        if event.type in {
+                            "response.web_search_call.in_progress",
+                            "response.web_search_call.searching",
+                        }:
+                            emit("searching")
+                        elif event.type == "response.web_search_call.completed":
+                            emit("search_completed")
+                        elif event.type in {
+                            "response.output_text.delta",
+                            "response.refusal.delta",
+                        } and event.delta:
+                            emit("response_started")
+                        elif event.type in {"response.failed", "response.incomplete", "error"}:
+                            raise ModelError(
+                                "OpenAI did not complete the response; "
+                                "retry or increase output limits"
+                            )
+                    response = await stream.get_final_response()
+        except (ModelError, TimeoutError):
+            raise
         except OpenAIError as exc:
             # Provider exceptions can contain request bodies; don't expose them to clients.
             raise ModelError(
                 "OpenAI request failed; check credentials, model and connectivity"
             ) from exc
+        except Exception as exc:
+            # Missing terminal events and invalid stream snapshots are not valid replies.
+            raise ModelError("OpenAI stream ended without a completed response") from exc
         if response.status != "completed":
             raise ModelError(
                 "OpenAI did not complete the response; retry or increase output limits"

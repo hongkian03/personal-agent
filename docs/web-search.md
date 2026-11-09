@@ -41,9 +41,10 @@ This budget is not a strict count of billable queries or a monetary spending lim
 
 Longer research can need a larger `PERSONAL_AGENT_MAX_OUTPUT_TOKENS` budget: reasoning
 tokens and the visible answer share that limit. `PERSONAL_AGENT_MODEL_TIMEOUT_SECONDS`
-bounds each model request, while `PERSONAL_AGENT_CHAT_TIMEOUT_SECONDS` bounds the whole
-turn. The existing Spectrum bridge waits up to 190 seconds, so increasing the chat
-timeout beyond that also requires adjusting the bridge.
+bounds each model request, including its stream, while `PERSONAL_AGENT_CHAT_TIMEOUT_SECONDS`
+bounds the whole turn. Streaming and progress messages do not extend either deadline.
+The Spectrum bridge starts with a 190-second connection deadline, then uses the timeout
+advertised by the accepted run plus a delivery margin. See [conversation progress](progress.md).
 
 ## Try it
 
@@ -70,6 +71,13 @@ native `web_search` tool rather than an application function named `web.search`.
 Search output remains in the model's history in its original provider format; citation
 formatting changes the visible reply only. This is web retrieval, not general browser
 automation or access to signed-in websites.
+
+The adapter consumes the Responses API stream and reports coarse search activity to the
+shared progress policy. Individual search completion does not mean the whole conversation
+has finished or a financial claim has been verified. Complete provider outputs still
+supply citations, function calls, and search-budget accounting; partial text is not sent
+as separate iMessages. The same progress policy applies to all interactive requests,
+including requests that never search the web.
 
 OpenAI bills search usage in addition to model usage. Search context size, the configured
 call budget, and the number of chat turns affect usage. Consult OpenAI's current

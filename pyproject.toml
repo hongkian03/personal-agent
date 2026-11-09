@@ -9,6 +9,7 @@ description = "A modular personal assistant with messaging and scheduled capabil
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anyio",
     "fastapi",
     "uvicorn[standard]",
     "pydantic-settings",

@@ -35,6 +35,10 @@ The next chat turn can discover the skill. Importing does not execute it or sche
 For local use, start/restart the CLI or API after packaging; a running process does not
 watch the bundle. Local and Railway revision numbers are independent.
 
+Interactive skills inherit the runtime's [conversation progress policy](progress.md).
+Do not add acknowledgment timers or status-message tools to individual skills. Global
+progress settings control the behavior for every conversation, including skill-free tasks.
+
 ## Updates and repeated deployments
 
 After changing either source file, rerun the same command and commit the regenerated

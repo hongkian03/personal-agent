@@ -32,6 +32,12 @@ current public sources, and explain its business, latest results, recent develop
 and risks with dated citations. It keeps facts and interpretation separate and discloses
 missing information. It only adds personal portfolio context when requested.
 
+Longer research sessions use the agent's [shared progress policy](progress.md): a delayed
+acknowledgment, occasional activity updates, and one complete report or a failure message.
+Hosted search activity is streamed through the model adapter. These updates describe work
+in progress, not verified findings. No progress instructions or tools need to be added to
+this skill, and packaging it does not change the global timing settings.
+
 This is natural-language guidance, not a fixed Python call sequence. The model chooses
 which tools to invoke based on the question and available permissions:
 

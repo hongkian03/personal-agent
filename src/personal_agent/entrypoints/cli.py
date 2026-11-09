@@ -5,12 +5,17 @@ import asyncio
 import sys
 from pathlib import Path
 
+from personal_agent.agent.progress import ChatEvent
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
 from personal_agent.bootstrap import open_runtime, skill_tool_ids
 from personal_agent.skills.importing import prepare_import
 
 
 async def run_cli(args: argparse.Namespace) -> int:
+    def show_progress(event: ChatEvent) -> None:
+        if event.kind in {"acknowledgment", "status"}:
+            print(f"Agent: {event.text}", flush=True)
+
     conversation_id = args.conversation
     async with open_runtime() as runtime:
         if args.message is None:
@@ -30,7 +35,9 @@ async def run_cli(args: argparse.Namespace) -> int:
                         continue
                     if not message.strip():
                         continue
-                result = await runtime.chat(message=message, conversation_id=conversation_id)
+                result = await runtime.chat(
+                    message=message, conversation_id=conversation_id, on_event=show_progress
+                )
             except EOFError:
                 return 0
             except RuntimeConfigurationError:

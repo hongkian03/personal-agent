@@ -19,9 +19,16 @@ import concrete providers. Keep capability-specific settings and calculations th
 
 ## Implemented runtime
 
-CLI or authenticated POST /chat -> trusted configured owner -> conversation lock ->
+CLI or authenticated POST /chat or /chat/stream -> trusted configured owner -> conversation lock ->
 load checkpoint -> build skill catalog and load exact references -> LangGraph model/tool loop ->
 persist checkpoints -> return response and conversation ID.
+
+The runtime owns a shared progress policy for interactive conversations. Model-provider
+activity and application-tool execution update request-scoped activity; timers produce
+delayed acknowledgments and occasional status messages. The CLI consumes these events
+directly, and `/chat/stream` publishes them as server-sent events for the Spectrum bridge.
+`/chat` retains its final-response JSON contract. Progress is separate from checkpointed
+model history and does not execute tools, grant permissions, or schedule work.
 
 OpenAI uses the Responses API through a model adapter. The registry validates tool
 arguments and scopes at invocation, with bounded execution and redacted logs. Available
@@ -37,6 +44,8 @@ Interactive chats can also expose OpenAI's hosted `web_search` tool. The OpenAI 
 adds the native tool alongside registered function tools, retains its raw output for
 subsequent model calls, and renders citation metadata as readable source links in the
 visible reply. The graph budgets hosted search/open/find calls across each chat turn.
+The adapter consumes provider streaming events while preserving the completed response
+for history and tool dispatch. Function tools execute only from completed model replies.
 This provider-specific path does not create a local function handler or a generic web
 browser. Morning messages do not receive hosted search. See [web search](web-search.md)
 for configuration and operational checks.
@@ -44,6 +53,10 @@ for configuration and operational checks.
 Failed/interrupted graph executions cannot be continued automatically; callers must start
 a new conversation. History has a configured size cap rather than automatic compaction.
 Use one process, with HTTPS supplied by the hosting platform for remote API access.
+Streaming clients receive one terminal result or error while connected. Disconnects
+cancel remaining request work; streams are not durable jobs and cannot be resumed or
+automatically replayed. Progress delivery is best-effort and does not establish message
+delivery. See [conversation progress](progress.md) for settings and the event contract.
 
 ## Future messaging and scheduled execution paths
 
