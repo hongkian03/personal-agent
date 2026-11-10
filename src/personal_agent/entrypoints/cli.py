@@ -29,10 +29,6 @@ async def run_cli(args: argparse.Namespace) -> int:
                     message = await asyncio.to_thread(input, "You: ")
                     if message.strip() == "/exit":
                         return 0
-                    if message.strip() == "/new":
-                        conversation_id = None
-                        print("The next message will start a new conversation.")
-                        continue
                     if not message.strip():
                         continue
                 result = await runtime.chat(

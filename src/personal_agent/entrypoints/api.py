@@ -19,6 +19,7 @@ from starlette.types import Receive, Scope, Send
 from personal_agent.agent.models import ModelError
 from personal_agent.agent.progress import ChatEventBuffer
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
+from personal_agent.agent.tools import ToolOutcomeUnknown
 from personal_agent.bootstrap import open_runtime
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,9 @@ def log_failure(
     conversation_id: str | None = None,
 ) -> None:
     """Log application-authored explanations and locations without provider payloads."""
-    if isinstance(exc, (ModelError, ChatValidationError, RuntimeConfigurationError)):
+    if isinstance(exc, (
+        ModelError, ChatValidationError, RuntimeConfigurationError, ToolOutcomeUnknown,
+    )):
         # These exceptions contain application-authored messages. Provider exception
         # strings and tracebacks can contain prompts, response bodies, or credentials.
         message = str(exc)
@@ -50,9 +53,17 @@ def log_failure(
         frames = extract_tb(error.__traceback__) if error is not None else []
         return f"{Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else "-"
 
+    details = {}
+    if isinstance(exc, ModelError):
+        details = {
+            name: getattr(exc, name) for name in (
+                "code", "retryable", "response_status", "incomplete_reason",
+                "provider_request_id", "response_id", "http_status", "hosted_tool_calls",
+            ) if getattr(exc, name) is not None
+        }
     logger.warning(
         "%s error_type=%s message=%s cause_type=%s source=%s cause_source=%s "
-        "run_id=%s conversation_id=%s",
+        "run_id=%s conversation_id=%s details=%s",
         event,
         type(exc).__name__,
         json.dumps(message[:500], ensure_ascii=False),
@@ -61,6 +72,7 @@ def log_failure(
         location(cause),
         run_id or "-",
         conversation_id or "-",
+        json.dumps(details, ensure_ascii=False),
     )
 
 

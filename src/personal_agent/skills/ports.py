@@ -18,6 +18,8 @@ class SkillRepository(Protocol):
         self, *, owner_id: str, skill_id: str, revision: int
     ) -> SkillRevision: ...
 
+    async def get_activation(self, *, owner_id: str, skill_id: str) -> int | None: ...
+
     async def save_revision(
         self, skill: SkillRevision, *, expected_latest_revision: int | None
     ) -> None:

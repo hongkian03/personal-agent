@@ -41,3 +41,22 @@ def test_cli_prints_progress_and_final_once(monkeypatch, capsys):
         "Agent: Completed report.",
         "[conversation: conversation]",
     ]
+
+
+def test_cli_new_uses_runtime_reset_without_changing_conversation_identity(monkeypatch):
+    calls = []
+
+    class Runtime:
+        async def chat(self, *, message, conversation_id, on_event):
+            calls.append((message, conversation_id))
+            return SimpleNamespace(conversation_id=conversation_id, text="Context cleared.")
+
+    @asynccontextmanager
+    async def open_runtime():
+        yield Runtime()
+
+    inputs = iter(("/new", "/exit"))
+    monkeypatch.setattr(cli, "open_runtime", open_runtime)
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    result = asyncio.run(cli.run_cli(argparse.Namespace(message=None, conversation="main")))
+    assert result == 0 and calls == [("/new", "main")]

@@ -47,6 +47,15 @@ see [conversation progress](progress.md) for timing variables and the streaming 
 Deploy API changes before bridge changes so `/chat/stream` is available when the updated
 bridge switches to it. Existing `/chat` JSON clients remain compatible.
 
+Model retry limits are configured on `agent-api`, including
+`PERSONAL_AGENT_MODEL_MAX_ATTEMPTS` and `PERSONAL_AGENT_MODEL_RETRY_DELAY_SECONDS`.
+These attempts share the existing model-call deadline. Conversation `/retry` is an
+explicit recovery request and does not require resetting the conversation; see
+[failure recovery](recovery.md). Local environment changes do not update hosted values.
+Tool-operation receipts share the existing skill database on the persistent data volume,
+or the configured PostgreSQL database. Preserve that storage during a redeployment;
+conversation resets intentionally retain receipts and unresolved action outcomes.
+
 ## Deploy source changes
 
 From the repository root, with the Railway CLI authenticated:

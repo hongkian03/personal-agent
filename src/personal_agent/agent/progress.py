@@ -89,7 +89,9 @@ class ProgressReporter:
             self.phase = "saved_data" if (event.tool_id or "").startswith("portfolio.") else "tool"
         elif event.phase in {"search_completed", "tool_completed"}:
             self.phase = "model_working"
-        elif event.phase in {"waiting", "model_working", "searching", "response_started"}:
+        elif event.phase in {
+            "waiting", "model_working", "searching", "response_started", "retrying", "recovering",
+        }:
             self.phase = event.phase
 
     def emit_due(self) -> None:
@@ -105,6 +107,8 @@ class ProgressReporter:
             "tool": "I’m checking the available information.",
             "saved_data": "I’m checking the saved portfolio information.",
             "response_started": "I’m preparing the response.",
+            "retrying": "The model connection failed temporarily; I’m trying that step again.",
+            "recovering": "I’m recovering the saved request and checking completed work.",
         }
         text = messages[self.phase]
         if self.acknowledged and self.phase == self.last_phase:

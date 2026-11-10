@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { setInterval } from "node:timers/promises";
 import { imessage } from "@spectrum-ts/imessage";
 import { Spectrum, markdown } from "spectrum-ts";
-import { ChatDelivery, ChatStreamError, readChatEvents, withDeadline } from "./chat-stream.ts";
+import {
+  ChatDelivery, ChatStreamError, CONNECTION_LOST, REQUEST_TIMED_OUT,
+  readChatEvents, withDeadline,
+} from "./chat-stream.ts";
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -128,8 +131,7 @@ for await (const [space, message] of app.messages) {
     console.error("Could not reply to iMessage:", error instanceof Error ? error.name : "unknown error");
     delivery.finishWith(error instanceof ChatStreamError ? error.userMessage
       : controller.signal.aborted
-        ? "The agent request timed out. Please try again. Your request was not automatically replayed."
-        : "I lost the connection before receiving a complete answer. Please try again. Your request was not automatically replayed.");
+        ? REQUEST_TIMED_OUT : CONNECTION_LOST);
   } finally {
     clearTimeout(deadline);
     await delivery.finished();

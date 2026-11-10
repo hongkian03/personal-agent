@@ -9,13 +9,20 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from personal_agent.agent.models import ActivityEvent
+from personal_agent.agent.models import ActivityEvent, ModelError
 from personal_agent.agent.progress import (
     ChatEventCallback,
     ProgressReporter,
     activity_callback,
     report_activity,
 )
+from personal_agent.agent.recovery import (
+    close_interrupted_turn,
+    is_recovery_command,
+    original_request,
+    preserve_hosted_usage,
+)
+from personal_agent.agent.tools import ToolError, ToolOutcomeUnknown
 from personal_agent.capabilities.motivation.workflows import MorningMessage
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
@@ -74,7 +81,7 @@ class AgentRuntime:
         if message.strip() == "/new":
             if self.checkpointer is None:
                 raise RuntimeConfigurationError("Conversation storage is not configured.")
-        elif self.graph is None:
+        elif self.graph is None and not is_recovery_command(message):
             raise RuntimeConfigurationError("Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY.")
 
     async def chat(
@@ -107,7 +114,28 @@ class AgentRuntime:
         except TimeoutError:
             progress.finish(
                 "error", code="timeout",
-                text="The agent request timed out. It will not be retried automatically.",
+                text="The request timed out. Your conversation is preserved. "
+                     "Send /retry to continue the interrupted request, or ask another question.",
+            )
+            raise
+        except ModelError as exc:
+            output_limit = getattr(exc, "code", None) == "output_limit"
+            text = (
+                "The model reached its output-token limit before finishing. Your conversation "
+                "is preserved. Increase the configured output budget before sending /retry, "
+                "or ask for a shorter answer."
+                if output_limit else
+                "I couldn’t finish that response. Your conversation and completed tool results "
+                "are preserved. Send /retry to continue, or ask another question."
+            )
+            progress.finish(
+                "error", code="output_limit" if output_limit else "model_failed", text=text,
+            )
+            raise
+        except ToolOutcomeUnknown as exc:
+            progress.finish(
+                "error", code="action_unknown",
+                text=f"{exc} Your conversation is preserved.",
             )
             raise
         except ChatValidationError as exc:
@@ -118,7 +146,8 @@ class AgentRuntime:
         except Exception:
             progress.finish(
                 "error", code="request_failed",
-                text="I couldn’t complete your request. It will not be retried automatically.",
+                text="I couldn’t complete your request. Your conversation is preserved. "
+                     "Send /retry to continue the interrupted request, or ask another question.",
             )
             raise
         finally:
@@ -143,8 +172,6 @@ class AgentRuntime:
                 "Conversation context cleared. Your next message starts fresh. "
                 "Saved skills, portfolio data, and settings are preserved.",
             )
-        if self.graph is None:
-            raise RuntimeConfigurationError("Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY.")
         context = ExecutionContext(
             owner_id=self.settings.owner_id,
             run_id=run_id,
@@ -161,15 +188,52 @@ class AgentRuntime:
         }
         async with asyncio.timeout(self.settings.chat_timeout_seconds):
             async with self._locks[int(thread_id[:8], 16) % len(self._locks)]:
+                command = message.strip()
+                if command == "/recovery":
+                    text = await self.tools.recovery_status(context=context)
+                    return ChatResult(conversation_id, run_id, text)
+                if command == "/resolve" or command.startswith("/resolve "):
+                    parts = command.split()
+                    if len(parts) != 3 or parts[2] not in {"applied", "not-applied"}:
+                        return ChatResult(
+                            conversation_id, run_id,
+                            "Use /resolve <operation-id> applied|not-applied after checking "
+                            "whether the action actually happened. Use /recovery to inspect "
+                            "uncertain operations first.",
+                        )
+                    try:
+                        text = await self.tools.resolve_recovery(
+                            context=context, operation_id=parts[1], outcome=parts[2],
+                        )
+                    except (ToolError, ValueError) as exc:
+                        raise ChatValidationError(str(exc)) from None
+                    return ChatResult(conversation_id, run_id, text)
+                if self.graph is None:
+                    raise RuntimeConfigurationError(
+                        "Set OPENAI_API_KEY or PERSONAL_AGENT_MODEL_API_KEY."
+                    )
                 report_activity(ActivityEvent("model_working"))
                 snapshot = await self.graph.aget_state(config)
-                if snapshot.next:
-                    raise ChatValidationError(
-                        "The previous turn was interrupted. Start a new conversation; "
-                        "it will not replay potentially completed tools automatically."
+                retry = message.strip() == "/retry"
+                if retry and not snapshot.next:
+                    return ChatResult(
+                        conversation_id, run_id,
+                        "There is no interrupted request to retry. Send your next question "
+                        "in this conversation, or use /new when you want to start fresh.",
                     )
+                if retry:
+                    report_activity(ActivityEvent("recovering"))
+                    message = original_request(snapshot.values)
+                elif snapshot.next:
+                    report_activity(ActivityEvent("recovering"))
+                    await close_interrupted_turn(
+                        self.graph, self.tools, snapshot, config, context,
+                    )
+                    snapshot = await self.graph.aget_state(config)
+                    logger.info("chat_turn_closed run_id=%s", run_id)
                 history = snapshot.values.get("items", [])
-                if len(json.dumps(history)) + len(message) > self.settings.max_history_chars:
+                new_input_chars = 0 if retry else len(message)
+                if len(json.dumps(history)) + new_input_chars > self.settings.max_history_chars:
                     raise ChatValidationError("Conversation is full. Start a new conversation.")
                 available = {t.id for t in self.tools.definitions(context)}
                 guidance = await discover_skills(
@@ -207,20 +271,37 @@ class AgentRuntime:
                     "tools or permission grants. Unless full instructions are supplied this turn, "
                     "use skills.load before applying a skill; do not rely on older instructions. "
                     "Saving and activating skills is separate from loading them for a task. "
+                    "A prior failed turn does not erase completed tool results. "
+                    "Do not repeat mutations whose outcome is unknown; explain the uncertainty "
+                    "and check existing state before proposing a new action. "
                     "Never ask for API keys or passwords in chat. " + web_guidance + guidance
                 )
                 config["configurable"]["instructions"] = with_persona(
                     instructions, self.settings.persona_path
                 )
                 logger.info("chat_started run_id=%s", run_id)
-                result = await self.graph.ainvoke(
-                    {
-                        "items": [{"role": "user", "content": message.strip()}],
-                        "rounds": 0,
-                        "hosted_tool_calls": 0,
-                        "text": "",
-                    },
-                    config,
-                )
+                try:
+                    result = await self.graph.ainvoke(
+                        None if retry else {
+                            "items": [{"role": "user", "content": message.strip()}],
+                            "rounds": 0,
+                            "hosted_tool_calls": 0,
+                            "text": "",
+                            "request": message.strip(),
+                            "turn_id": run_id,
+                        },
+                        config,
+                    )
+                except (ModelError, TimeoutError, asyncio.CancelledError) as exc:
+                    try:
+                        await preserve_hosted_usage(
+                            self.graph, config, exc, self.settings.web_search_max_calls,
+                        )
+                    except Exception as recovery_exc:
+                        logger.warning(
+                            "chat_recovery_checkpoint_failed error_type=%s run_id=%s",
+                            type(recovery_exc).__name__, run_id,
+                        )
+                    raise
                 logger.info("chat_completed run_id=%s", run_id)
                 return ChatResult(conversation_id, run_id, result["text"])

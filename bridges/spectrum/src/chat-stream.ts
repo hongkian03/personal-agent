@@ -17,7 +17,8 @@ export class ChatStreamError extends Error {
   }
 }
 
-const CONNECTION_LOST = "I lost the connection before receiving a complete answer. Please try again. Your request was not automatically replayed.";
+export const CONNECTION_LOST = "I lost the connection before receiving a complete answer. Your conversation is preserved. Send /retry to resume a saved request, or ask another question.";
+export const REQUEST_TIMED_OUT = "The agent request timed out. Your conversation is preserved. Send /retry to resume a saved request, or ask another question.";
 const MAX_FRAME_CHARS = 1_000_000;
 
 /** Bounds waiting for SDK calls that do not expose cancellation. Never retries a send. */
@@ -71,11 +72,11 @@ export async function* readChatEvents(
 ): AsyncGenerator<ChatEvent> {
   if (!response.ok) {
     const text = response.status === 504
-      ? "The agent request timed out. Please try again."
+      ? REQUEST_TIMED_OUT
       : response.status === 401 || response.status === 403
         ? "The agent connection is not configured correctly."
         : response.status === 400 || response.status === 422
-          ? "I couldn’t process that request. Please try a new conversation."
+          ? "I couldn’t process that request. Check its format; your conversation is preserved."
           : "The agent is unavailable right now. Please try again later.";
     throw new ChatStreamError(text);
   }

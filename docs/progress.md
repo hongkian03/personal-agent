@@ -82,8 +82,9 @@ begins use `error` events because the HTTP response has already started.
 If the connection ends without a terminal event, the client should report the connection
 loss. It must not replay the request automatically: application tools may already have
 completed. Disconnecting cancels remaining request work and closes the provider stream;
-it does not undo completed tools. Interrupted graph executions retain the existing
-requirement to start a new conversation rather than replaying a partially completed turn.
+it does not undo completed tools. Send `/retry` to retry an interrupted turn, or send a
+new question to continue with the existing conversation history. See
+[failure recovery](recovery.md) for retry boundaries and uncertain tool outcomes.
 
 These streams are live delivery, without durable event storage or reconnection replay.
 Generic progress messages are not appended to model history or saved in checkpoints.
@@ -97,6 +98,12 @@ Unexpected exception strings, provider response bodies, and full tracebacks are 
 because they may contain private request data. For example, a `ModelError` warning can
 now distinguish an incomplete response from an empty reply or an interrupted stream;
 its cause type and location help identify SDK, network, or application failures.
+Model failures also include structured codes, safe response/incomplete status, request
+and response IDs when available, HTTP status, and observed hosted-tool usage.
+
+Recovery preserves conversation and execution state; it does not reconnect an old SSE
+stream. Each `/retry` request opens its own run and progress stream. Bounded automatic
+model retries remain inside the original request and its execution deadlines.
 
 ## Deployment and checks
 

@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from personal_agent import bootstrap
 from personal_agent.agent.models import ModelReply
-from personal_agent.agent.service import ChatValidationError
 from personal_agent.capabilities.portfolio.models import PortfolioReport
 from personal_agent.config import Settings
 from personal_agent.entrypoints import api
@@ -100,15 +99,16 @@ def test_reset_is_scoped_and_preserves_saved_data(monkeypatch, tmp_path):
     asyncio.run(check())
 
 
-def test_reset_recovers_interrupted_conversation(monkeypatch, tmp_path):
+def test_interruption_allows_next_question_and_explicit_reset(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "OpenAIModel", Model)
 
     async def check():
         async with bootstrap.open_runtime(settings_for(tmp_path)) as runtime:
+            await runtime.chat("Earlier question", "main")
             with pytest.raises(RuntimeError, match="interrupted"):
                 await runtime.chat("interrupt", "main")
-            with pytest.raises(ChatValidationError, match="previous turn was interrupted"):
-                await runtime.chat("try again", "main")
+            await runtime.chat("try again", "main")
+            assert user_messages(runtime) == ["Earlier question", "interrupt", "try again"]
             await runtime.chat("/new", "main")
             await runtime.chat("recovered", "main")
             assert user_messages(runtime) == ["recovered"]

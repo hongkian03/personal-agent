@@ -44,14 +44,17 @@ def skill_tool_ids(*, portfolio_enabled: bool = True) -> set[str]:
     )
 
 
-def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegistry:
-    tools = ToolRegistry(timeout_seconds=settings.tool_timeout_seconds)
+def build_tools(*, repository, settings: Settings, portfolio=None, operations=None) -> ToolRegistry:
+    tools = ToolRegistry(timeout_seconds=settings.tool_timeout_seconds, operations=operations)
     service = SkillService(
         repository,
         available_tool_ids=skill_tool_ids(portfolio_enabled=portfolio is not None),
     )
 
-    def register(name, description, properties, required, scope, handler, *, mutates=False):
+    def register(
+        name, description, properties, required, scope, handler,
+        *, mutates=False, reconcile=None,
+    ):
         tools.register(
             ToolDefinition(
                 id=name,
@@ -66,6 +69,7 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
                 changes_state=mutates,
             ),
             handler,
+            reconcile=reconcile,
         )
 
     async def current_time(arguments: dict, context: ExecutionContext) -> dict:
@@ -121,6 +125,37 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
     async def archive_skill(arguments: dict, context: ExecutionContext) -> dict:
         await service.archive(owner_id=context.owner_id, **arguments)
         return {**arguments, "active": False}
+
+    async def reconcile_save(arguments: dict, context: ExecutionContext) -> dict | None:
+        expected = arguments["expected_latest_revision"]
+        target = 1 if expected is None else expected + 1
+        try:
+            saved = await repository.get_revision(
+                owner_id=context.owner_id, skill_id=arguments["skill_id"], revision=target,
+            )
+        except LookupError:
+            return None
+        fields = ("name", "description", "instructions")
+        if any(getattr(saved, field) != arguments[field] for field in fields):
+            return None
+        if tuple(saved.required_tool_ids) != tuple(arguments["required_tool_ids"]):
+            return None
+        return {
+            "skill_id": saved.skill_id, "revision": saved.revision, "active": False,
+            "note": "The matching saved revision confirms this action completed.",
+        }
+
+    async def reconcile_activation(arguments: dict, context: ExecutionContext) -> dict | None:
+        try:
+            active = await repository.get_activation(
+                owner_id=context.owner_id, skill_id=arguments["skill_id"],
+            )
+        except (LookupError, AttributeError):
+            return None
+        target = arguments.get("revision")
+        if active != target:
+            return None
+        return {**arguments, "active": target is not None, "reconciled": True}
 
     skill_id = {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,119}$"}
     register(
@@ -179,6 +214,7 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
         "skills:write",
         save_skill,
         mutates=True,
+        reconcile=reconcile_save,
     )
     register(
         "skills.activate",
@@ -188,6 +224,7 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
         "skills:write",
         activate_skill,
         mutates=True,
+        reconcile=reconcile_activation,
     )
     register(
         "skills.archive",
@@ -197,6 +234,7 @@ def build_tools(*, repository, settings: Settings, portfolio=None) -> ToolRegist
         "skills:write",
         archive_skill,
         mutates=True,
+        reconcile=reconcile_activation,
     )
     if portfolio is not None:
         register_portfolio_tools(tools, portfolio)
@@ -239,7 +277,10 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 timezone=settings.timezone,
                 sync_interval_seconds=settings.portfolio_sync_interval_seconds,
             )
-            tools = build_tools(repository=storage.skills, settings=settings, portfolio=portfolio)
+            tools = build_tools(
+                repository=storage.skills, settings=settings, portfolio=portfolio,
+                operations=storage.tool_operations,
+            )
             imported = await apply_bundle(
                 settings.skill_bundle_path,
                 service=SkillService(storage.skills, skill_tool_ids()),
@@ -258,6 +299,8 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                     timeout_seconds=settings.model_timeout_seconds,
                     max_output_tokens=settings.max_output_tokens,
                     web_search_context_size=settings.web_search_context_size,
+                    max_attempts=settings.model_max_attempts,
+                    retry_delay_seconds=settings.model_retry_delay_seconds,
                 )
                 graph = build_graph(
                     model=model,

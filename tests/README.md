@@ -19,6 +19,10 @@ mock HTTP transports, fake model/broker clients and temporary SQLite databases.
   integrity, and prevention of partial-tool execution after an interrupted provider stream.
 - `test_api_logging.py`: descriptive API failure messages, correlation IDs, underlying
   exception locations, and exclusion of private provider/user data from warnings.
+- `test_turn_recovery.py`: same-conversation retries, preserved history, legacy checkpoints,
+  restart/timeout/disconnect recovery, and retained per-turn budgets.
+- `test_tool_recovery.py`: durable per-call receipts, interrupted batches, uncertain writes,
+  saved-skill reconciliation, explicit owner resolution, and replay prevention.
 
 The Spectrum bridge has separate SSE parser and delivery tests: run `npm test` and
 `npm run typecheck` in `bridges/spectrum`. They use synthetic streams and fake sends.

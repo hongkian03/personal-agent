@@ -35,7 +35,30 @@ class ModelReply:
 
 
 class ModelError(RuntimeError):
-    """A model request failed or did not produce a complete usable response."""
+    """Application-authored failure text plus safe recovery and diagnostic metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "model_error",
+        retryable: bool = False,
+        response_status: str | None = None,
+        incomplete_reason: str | None = None,
+        provider_request_id: str | None = None,
+        response_id: str | None = None,
+        http_status: int | None = None,
+        hosted_tool_calls: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+        self.response_status = response_status
+        self.incomplete_reason = incomplete_reason
+        self.provider_request_id = provider_request_id
+        self.response_id = response_id
+        self.http_status = http_status
+        self.hosted_tool_calls = hosted_tool_calls
 
 
 class ChatModel(Protocol):

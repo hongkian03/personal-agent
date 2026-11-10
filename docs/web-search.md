@@ -31,13 +31,18 @@ Environment variables override the defaults in `src/personal_agent/config.py`. R
 the local process after editing configuration. A local `.env` edit does not update
 Railway: change the hosted variables and deploy or restart that service separately.
 
-The search budget resets for each incoming chat turn and is separate from
+The search budget resets for a new ordinary chat turn and is separate from
 `PERSONAL_AGENT_MAX_TOOL_ROUNDS`, which bounds the application's model/function-tool
 loop. A hosted response can search, open a page, or find text within a page. After the
 budget is consumed, subsequent model calls in that turn do not receive the hosted tool.
 OpenAI can return additional records for attempted or unfinished calls; the application
 counts all returned records conservatively when deciding whether to offer search again.
 This budget is not a strict count of billable queries or a monetary spending limit.
+An explicit `/retry` preserves the failed turn's saved search budget and completed tool
+results. Automatic provider retries stop once hosted-tool activity has been observed,
+so they do not intentionally replay observed search activity. An explicit retry may need
+another search when an interrupted provider response never returned reusable results;
+it still uses the turn's remaining search budget.
 
 Longer research can need a larger `PERSONAL_AGENT_MAX_OUTPUT_TOKENS` budget: reasoning
 tokens and the visible answer share that limit. `PERSONAL_AGENT_MODEL_TIMEOUT_SECONDS`
@@ -45,6 +50,11 @@ bounds each model request, including its stream, while `PERSONAL_AGENT_CHAT_TIME
 bounds the whole turn. Streaming and progress messages do not extend either deadline.
 The Spectrum bridge starts with a 190-second connection deadline, then uses the timeout
 advertised by the accepted run plus a delivery margin. See [conversation progress](progress.md).
+
+An output-limit failure is reported separately from temporary provider/network failures.
+The runtime does not automatically raise `PERSONAL_AGENT_MAX_OUTPUT_TOKENS`; adjust it
+explicitly when the report needs more reasoning/output space, then use `/retry` in the
+same conversation. See [failure recovery](recovery.md) for the shared retry settings.
 
 ## Try it
 

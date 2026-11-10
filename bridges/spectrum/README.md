@@ -1,5 +1,9 @@
 # spectrum
 
+Interactive failures preserve conversation history. Send `/retry` to resume an interrupted
+turn or send a different question to continue. The bridge does not replay requests on
+its own after a timeout or connection loss. See [failure recovery](../../docs/recovery.md).
+
 A [Spectrum](https://photon.codes/docs/spectrum-ts) project. Wired with: imessage.
 
 ## Typing indicator

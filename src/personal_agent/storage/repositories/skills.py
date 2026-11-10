@@ -80,6 +80,17 @@ class SqlSkillRepository:
     async def initialize(self) -> None:
         await asyncio.to_thread(metadata.create_all, self.engine)
 
+    async def get_activation(self, *, owner_id: str, skill_id: str) -> int | None:
+        def read():
+            with self.engine.connect() as connection:
+                row = connection.execute(select(heads.c.active_revision).where(
+                    _identity(owner_id, skill_id)
+                )).first()
+                if row is None:
+                    raise LookupError("Skill not found")
+                return row[0]
+        return await asyncio.to_thread(read)
+
     async def import_revision(
         self, skill: SkillRevision, *, source_digest: str, activate: bool
     ) -> tuple[int, bool]:

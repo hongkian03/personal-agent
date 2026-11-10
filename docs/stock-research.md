@@ -38,6 +38,12 @@ Hosted search activity is streamed through the model adapter. These updates desc
 in progress, not verified findings. No progress instructions or tools need to be added to
 this skill, and packaging it does not change the global timing settings.
 
+If research fails, `/retry` retries the saved turn while preserving its completed tool
+results and conversation history. A new question can also continue the same conversation;
+`/new` is only needed when you intentionally want to clear its context. Output-limit
+failures identify the output-token limit instead of silently increasing it. See the
+agent's [failure recovery behavior](recovery.md).
+
 This is natural-language guidance, not a fixed Python call sequence. The model chooses
 which tools to invoke based on the question and available permissions:
 

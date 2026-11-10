@@ -22,6 +22,10 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   API, with persistent conversation history, conversation resets, and access to registered tools.
   Longer requests through iMessage, the CLI, or streaming HTTP receive delayed acknowledgments
   and occasional activity updates, followed by a complete answer or an explicit failure message.
+  Failed turns can be retried while preserving completed work and conversation history;
+  a new question can continue the same conversation after a failure.
+  Durable tool receipts prevent completed writes from being repeated during recovery,
+  with reconciliation for actions whose outcome is uncertain.
   iMessage supports an independently configurable typing indicator.
   Chat replies and morning messages use Spectrum's Markdown renderer for native iMessage text styling.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,

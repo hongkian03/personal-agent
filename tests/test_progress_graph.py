@@ -17,7 +17,7 @@ from openai.types.responses import (
 
 from personal_agent.agent.graph import build_graph
 from personal_agent.agent.models import ActivityEvent, ModelError, ModelReply, ToolCall
-from personal_agent.agent.service import AgentRuntime, ChatValidationError
+from personal_agent.agent.service import AgentRuntime
 from personal_agent.agent.tools import ToolDefinition, ToolRegistry
 from personal_agent.config import Settings
 from personal_agent.integrations.llm.provider import OpenAIModel
@@ -182,8 +182,15 @@ def test_interrupted_provider_stream_cannot_execute_partial_calls_in_actual_grap
             assert raw_stream.response.is_closed
             records = [record async for record in saver.alist(None)]
             assert "call_partial" not in repr(records)
-            with pytest.raises(ChatValidationError, match="previous turn was interrupted"):
-                await runtime.chat("Continue.", "interrupted")
+            model.respond = AsyncMock(return_value=ModelReply(
+                items=[{"role": "assistant", "content": "New answer."}],
+                text="New answer.", tool_calls=[],
+            ))
+            assert (await runtime.chat("Continue.", "interrupted")).text == "New answer."
+            resumed_items = model.respond.await_args.kwargs["items"]
+            assert [item["content"] for item in resumed_items if item.get("role") == "user"] == [
+                "Research.", "Continue.",
+            ]
         finally:
             await model.aclose()
 

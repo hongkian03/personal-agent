@@ -50,12 +50,20 @@ This provider-specific path does not create a local function handler or a generi
 browser. Morning messages do not receive hosted search. See [web search](web-search.md)
 for configuration and operational checks.
 
-Failed/interrupted graph executions cannot be continued automatically; callers must start
-a new conversation. History has a configured size cap rather than automatic compaction.
+Failed/interrupted turns retain their conversation history and completed execution results.
+An explicit `/retry` resumes the saved step; a new ordinary message closes the failed
+attempt before starting the next turn. Transient model requests can retry within bounded
+attempt and deadline limits. See [failure recovery](recovery.md) for tool replay rules.
+Application tools have durable operation receipts in the skill database or configured
+PostgreSQL. Recovery reuses completed results, retries interrupted reads, and reconciles
+uncertain writes against saved state or explicit owner confirmation. Receipts survive
+conversation resets, and unresolved matching writes remain blocked across new turns.
+History has a configured size cap rather than automatic compaction.
 Use one process, with HTTPS supplied by the hosting platform for remote API access.
 Streaming clients receive one terminal result or error while connected. Disconnects
-cancel remaining request work; streams are not durable jobs and cannot be resumed or
-automatically replayed. Progress delivery is best-effort and does not establish message
+cancel remaining request work; SSE streams cannot be reconnected or automatically replayed.
+Execution recovery starts a new request against the saved conversation state.
+Progress delivery is best-effort and does not establish message
 delivery. See [conversation progress](progress.md) for settings and the event contract.
 
 ## Future messaging and scheduled execution paths

@@ -1,6 +1,5 @@
 """Bounded conversational model/tool loop with injected checkpoint storage."""
 
-import asyncio
 import json
 import logging
 import operator
@@ -11,7 +10,8 @@ from langgraph.graph import END, START, StateGraph
 
 from personal_agent.agent.models import ActivityEvent, ChatModel
 from personal_agent.agent.progress import report_activity
-from personal_agent.agent.tools import ToolError, ToolRegistry
+from personal_agent.agent.recovery import turn_identifier
+from personal_agent.agent.tools import ToolError, ToolOutcomeUnknown, ToolRegistry
 from personal_agent.core.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ class AgentState(TypedDict, total=False):
     text: str
     rounds: int
     hosted_tool_calls: int
+    request: str
+    turn_id: str
 
 
 def build_graph(
@@ -77,6 +79,9 @@ def build_graph(
                 {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
                 for call in reply.tool_calls
             ],
+            # A newly completed model response creates previously unexecuted calls,
+            # including when recovering an older checkpoint without a logical turn ID.
+            "turn_id": turn_identifier(state),
         }
 
     async def call_tools(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
@@ -89,15 +94,22 @@ def build_graph(
                 arguments = json.loads(call["arguments"])
                 if not isinstance(arguments, dict):
                     raise ToolError("Tool arguments must be an object")
-                async with asyncio.timeout(tool_timeout_seconds):
-                    tool_id = tools.resolve_name(call["name"])
-                    report_activity(ActivityEvent("tool_started", tool_id=tool_id))
-                    result = await tools.invoke(
-                        tool_id=tool_id,
-                        arguments=arguments,
-                        context=context,
-                    )
+                tool_id = tools.resolve_name(call["name"])
+                report_activity(ActivityEvent("tool_started", tool_id=tool_id))
+                # Registry owns the handler deadline and classifies timed-out writes
+                # as uncertain before any generic timeout can turn them into a result.
+                result = await tools.invoke(
+                    tool_id=tool_id,
+                    arguments=arguments,
+                    context=context,
+                    turn_id=turn_identifier(state),
+                    call_id=call["call_id"],
+                    allow_new_mutation=bool(state.get("turn_id")),
+                    timeout_seconds=tool_timeout_seconds,
+                )
                 output = json.dumps({"ok": True, "result": result}, allow_nan=False)
+            except ToolOutcomeUnknown:
+                raise
             except (ToolError, json.JSONDecodeError) as exc:
                 output = json.dumps({"ok": False, "error": str(exc)[:300]})
             except TimeoutError:
@@ -120,6 +132,11 @@ def build_graph(
     graph.add_node("model", call_model)
     graph.add_node("tools", call_tools)
     graph.add_node("limit", limit_reached)
+    # Explicit boundaries for closing failed turns and retaining failed-call budgets.
+    graph.add_node("recovery", lambda state: {})
+    graph.add_node("resume", lambda state: {})
+    graph.add_edge("recovery", END)
+    graph.add_edge("resume", "model")
     graph.add_edge(START, "model")
     graph.add_conditional_edges(
         "model", lambda state: "tools" if state.get("pending_calls") else END
