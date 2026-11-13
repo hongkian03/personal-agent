@@ -12,6 +12,7 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 | Agent harness | LangGraph, OpenAI Responses API, hosted web search, validated function calling |
 | Messaging | TypeScript, Node.js, Spectrum / Photon for iMessage |
 | Persistence | SQLAlchemy, SQLite or PostgreSQL, LangGraph checkpoints |
+| Long-term memory | Optional self-hosted Cognee service, graph and vector indexing, durable ingestion queue |
 | Portfolio data | Interactive Brokers Flex Web Service, XML reports |
 | Deployment | Docker, Docker Compose, Railway |
 | Development | uv, pytest, Ruff, TypeScript compiler |
@@ -30,6 +31,12 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   Chat replies and morning messages use Spectrum's Markdown renderer for native iMessage text styling.
 - **Shared persona:** A Markdown profile defines the agent's name, personality,
   communication preferences, and personal context for conversations. Tunable to anyone's preference.
+- **Long-term memory:** When configured, a separately hosted Cognee service indexes completed
+  conversations and retrieves relevant context across conversation resets. Background ingestion
+  uses persistent retries and stable source IDs. Chat tools can explicitly remember, search,
+  and forget individual entries; forgetting preserves separate conversation checkpoints and
+  other entries. Memory outages allow ordinary chat to continue. Skills and operational records
+  remain in the application database.
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. The agent
   selects from a compact catalog and loads full instructions on demand; exact skill names
   and IDs load directly. Skills are scoped to the owner and available tools.

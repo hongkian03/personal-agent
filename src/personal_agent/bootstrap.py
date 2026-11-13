@@ -20,8 +20,11 @@ from personal_agent.capabilities.web.manifest import CAPABILITY as WEB
 from personal_agent.config import Settings
 from personal_agent.core.context import ExecutionContext
 from personal_agent.core.registry import CapabilityRegistry
+from personal_agent.integrations.cognee import CogneeClient
+from personal_agent.integrations.cognee.tools import register_memory_tools
 from personal_agent.integrations.ibkr.client import IBKRFlexClient
 from personal_agent.integrations.llm.provider import OpenAIModel
+from personal_agent.memory.service import MemoryService
 from personal_agent.skills.discovery import available_skills, skill_details, skill_summary
 from personal_agent.skills.importing import apply_bundle
 from personal_agent.skills.service import SkillService
@@ -37,18 +40,22 @@ def build_registry(*, web_search_enabled: bool = True) -> CapabilityRegistry:
     return registry
 
 
-def skill_tool_ids(*, portfolio_enabled: bool = True) -> set[str]:
+def skill_tool_ids(*, portfolio_enabled: bool = True, memory_enabled: bool = False) -> set[str]:
     """Application tools supported by skill imports and conversational authoring."""
     return set(SKILL_TOOL_IDS) | {"runtime.current_time"} | (
         set(PORTFOLIO.tool_ids) if portfolio_enabled else set()
-    )
+    ) | ({"memory.search", "memory.remember", "memory.forget"} if memory_enabled else set())
 
 
-def build_tools(*, repository, settings: Settings, portfolio=None, operations=None) -> ToolRegistry:
+def build_tools(
+    *, repository, settings: Settings, portfolio=None, operations=None, memory=None,
+) -> ToolRegistry:
     tools = ToolRegistry(timeout_seconds=settings.tool_timeout_seconds, operations=operations)
     service = SkillService(
         repository,
-        available_tool_ids=skill_tool_ids(portfolio_enabled=portfolio is not None),
+        available_tool_ids=skill_tool_ids(
+            portfolio_enabled=portfolio is not None, memory_enabled=memory is not None,
+        ),
     )
 
     def register(
@@ -238,6 +245,8 @@ def build_tools(*, repository, settings: Settings, portfolio=None, operations=No
     )
     if portfolio is not None:
         register_portfolio_tools(tools, portfolio)
+    if memory is not None:
+        register_memory_tools(tools, memory)
     return tools
 
 
@@ -269,7 +278,23 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
             )
         model = None
         sync_task = None
+        memory = None
+        memory_client = None
         try:
+            if settings.memory_enabled:
+                memory_client = CogneeClient(
+                    base_url=settings.cognee_url,
+                    api_token=settings.cognee_api_token.get_secret_value(),
+                    timeout_seconds=settings.memory_recall_timeout_seconds,
+                    ingest_timeout_seconds=settings.memory_ingest_timeout_seconds,
+                )
+                memory = MemoryService(
+                    memory_client, storage.memory,
+                    poll_interval_seconds=settings.memory_poll_interval_seconds,
+                    retry_seconds=settings.memory_retry_seconds,
+                    max_context_chars=settings.memory_max_context_chars,
+                )
+                await memory.start()
             portfolio = PortfolioService(
                 storage.portfolio,
                 client,
@@ -280,10 +305,13 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
             tools = build_tools(
                 repository=storage.skills, settings=settings, portfolio=portfolio,
                 operations=storage.tool_operations,
+                memory=memory,
             )
             imported = await apply_bundle(
                 settings.skill_bundle_path,
-                service=SkillService(storage.skills, skill_tool_ids()),
+                service=SkillService(
+                    storage.skills, skill_tool_ids(memory_enabled=memory is not None),
+                ),
                 owner_id=settings.owner_id,
             )
             for skill_id, revision, changed in imported:
@@ -346,8 +374,13 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 morning=morning,
                 portfolio=portfolio,
                 portfolio_morning=portfolio_morning,
+                memory=memory,
             )
         finally:
+            if memory is not None:
+                await memory.close()
+            if memory_client is not None:
+                await memory_client.aclose()
             if sync_task is not None:
                 sync_task.cancel()
                 with suppress(asyncio.CancelledError):

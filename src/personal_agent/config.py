@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     web_search_enabled: bool = True
     web_search_context_size: Literal["low", "medium", "high"] = "medium"
     web_search_max_calls: int = Field(default=3, ge=1, le=10)
+    memory_enabled: bool = False
+    cognee_url: str | None = None
+    cognee_api_token: SecretStr | None = None
+    memory_recall_timeout_seconds: float = Field(default=3, gt=0, le=30)
+    memory_ingest_timeout_seconds: float = Field(default=180, gt=0, le=600)
+    memory_poll_interval_seconds: float = Field(default=5, gt=0, le=60)
+    memory_retry_seconds: float = Field(default=30, gt=0, le=3600)
+    memory_max_context_chars: int = Field(default=6000, ge=500, le=20000)
     log_level: str = "INFO"
     ibkr_flex_token: SecretStr | None = None
     ibkr_flex_query_id: str | None = Field(default=None, pattern=r"^[0-9]{1,30}$")
@@ -63,6 +71,7 @@ class Settings(BaseSettings):
         "database_url",
         "api_token",
         "model_api_key",
+        "cognee_api_token",
         "ibkr_flex_token",
         "photon_api_key",
         "photon_webhook_secret",
@@ -83,6 +92,24 @@ class Settings(BaseSettings):
     def ibkr_credentials_together(self):
         if bool(self.ibkr_flex_token) != bool(self.ibkr_flex_query_id):
             raise ValueError("Set IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID together")
+        return self
+
+    @model_validator(mode="after")
+    def memory_configuration(self):
+        if self.memory_enabled:
+            from urllib.parse import urlsplit
+
+            url = urlsplit(self.cognee_url or "")
+            if (
+                url.scheme not in {"http", "https"} or not url.hostname
+                or url.username or url.password or url.query or url.fragment
+            ):
+                raise ValueError("Memory requires a valid HTTP(S) COGNEE_URL without credentials")
+            if (
+                self.cognee_api_token is None
+                or len(self.cognee_api_token.get_secret_value()) < 32
+            ):
+                raise ValueError("Memory requires COGNEE_API_TOKEN with at least 32 characters")
         return self
 
     @property

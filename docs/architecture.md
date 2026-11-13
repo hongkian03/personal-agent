@@ -59,6 +59,14 @@ PostgreSQL. Recovery reuses completed results, retries interrupted reads, and re
 uncertain writes against saved state or explicit owner confirmation. Receipts survive
 conversation resets, and unresolved matching writes remain blocked across new turns.
 History has a configured size cap rather than automatic compaction.
+Optional long-term memory uses a separately deployed Cognee service. The chat runtime
+retrieves bounded reference context before model execution and durably queues completed
+ordinary exchanges afterward. An API-lifecycle worker delivers queued entries with stable
+identifiers and retries; explicit memory tools use the same outbox. Conversation resets
+preserve long-term memory. Memory control turns are excluded from automatic capture.
+The existing SQL database owns the outbox, deletion tombstones, checkpoints, skills,
+portfolio snapshots, daily claims, and tool receipts. Cognee owns semantic indexing and
+its graph/vector stores; it is not the operational database. See [memory](memory.md).
 Use one process, with HTTPS supplied by the hosting platform for remote API access.
 Streaming clients receive one terminal result or error while connected. Disconnects
 cancel remaining request work; SSE streams cannot be reconnected or automatically replayed.

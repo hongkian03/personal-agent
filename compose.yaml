@@ -26,5 +26,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  cognee:
+    profiles: [memory]
+    build: ./services/cognee
+    env_file: ./services/cognee/.env
+    environment:
+      PORT: 8000
+    volumes:
+      - cognee-data:/cognee-storage
+    ports:
+      - "127.0.0.1:8002:8000"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 60s
+
 volumes:
   agent-data:
+  cognee-data:

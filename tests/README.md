@@ -23,6 +23,12 @@ mock HTTP transports, fake model/broker clients and temporary SQLite databases.
   restart/timeout/disconnect recovery, and retained per-turn budgets.
 - `test_tool_recovery.py`: durable per-call receipts, interrupted batches, uncertain writes,
   saved-skill reconciliation, explicit owner resolution, and replay prevention.
+- `test_memory_runtime.py`: recall across resets, completed-turn capture, failure recovery,
+  outage handling, and exclusion of explicit memory operations from automatic capture.
+- `test_memory_outbox.py`: persistent ingestion retries, stable IDs, deletion tombstones,
+  bounded owner-scoped retrieval, cancellation, and capture during slow remote requests.
+- `test_cognee_client.py`, `test_memory_tools.py`: authenticated HTTP contracts and durable
+  conversational memory-tool operations.
 
 The Spectrum bridge has separate SSE parser and delivery tests: run `npm test` and
 `npm run typecheck` in `bridges/spectrum`. They use synthetic streams and fake sends.

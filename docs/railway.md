@@ -8,10 +8,13 @@ in Kian Hong's Projects, environment `production`.
 | `agent-api` | Root Dockerfile; one process, one replica; port 8000; `/health` startup check |
 | `spectrum` | `bridges/spectrum/Dockerfile`; one long-running bridge; no HTTP port |
 | `agent-data` | 500 MB persistent volume mounted at `/data` on `agent-api` |
+| `cognee` | `services/cognee/Dockerfile`; one memory-service process; private port 8000 |
+| `cognee-data` | 500 MB persistent volume mounted at `/cognee-storage` on `cognee` |
 | API connection | `http://agent-api.railway.internal:8000` within the project |
 
-The services use CLI uploads of the working tree. GitHub automatic deployments are not
-connected, so uncommitted local changes can be deployed without pushing the repository.
+The commands below deploy CLI uploads of the working tree, including uncommitted changes.
+The API's existing GitHub source connection is preserved in the infrastructure configuration;
+Spectrum and Cognee have independent directory uploads.
 Railway configuration is defined in [`.railway/railway.ts`](../.railway/railway.ts).
 Secrets are managed separately in Railway Variables, never in that file or build archives.
 `.railwayignore` and the Docker allowlists exclude local credentials and application data.
@@ -56,6 +59,14 @@ Tool-operation receipts share the existing skill database on the persistent data
 or the configured PostgreSQL database. Preserve that storage during a redeployment;
 conversation resets intentionally retain receipts and unresolved action outcomes.
 
+## Long-term memory
+
+Cognee is deployed separately from the agent and Spectrum. Follow [memory setup](memory.md)
+for its service token, model variables, private API connection, persistent storage, and
+verification. Memory is disabled unless explicitly enabled on `agent-api`. Keep the
+Cognee volume separate from the existing application database; do not migrate skills or
+conversation checkpoints into it.
+
 ## Deploy source changes
 
 From the repository root, with the Railway CLI authenticated:
@@ -64,11 +75,12 @@ From the repository root, with the Railway CLI authenticated:
 railway link --project 920e1ed2-70ed-4a82-b829-e0d2bc5a7d66 --environment production --service agent-api
 railway up --service agent-api --environment production --detach
 railway up bridges/spectrum --path-as-root --service spectrum --environment production --detach
+railway up services/cognee --path-as-root --service cognee --environment production --detach
 railway deployment list --service agent-api --environment production --json
 railway deployment list --service spectrum --environment production --json
 ```
 
-The bridge upload uses its own directory as the archive root. Each service's Dockerfile
+The bridge and Cognee uploads use their own directories as the archive root. Each service's Dockerfile
 therefore sees exactly the source layout it expects. `--detach` returns before a service
 is healthy; check deployment status and runtime logs after uploading.
 
@@ -117,3 +129,10 @@ docker compose logs --tail=50 agent-api spectrum
 
 Confirm chat and iMessage delivery on the new host before removing Railway resources.
 Keep a separate database backup before deleting a persistent volume.
+
+If memory is enabled, also stop Cognee and back up its entire `/cognee-storage` volume
+consistently, including source storage, embedded databases, and `control.sqlite`.
+Restore it to the local `cognee-data` volume, preserve the service token and model settings,
+and set the agent's Cognee URL to `http://cognee:8000`. Start with the `memory` Compose
+profile and verify recall before removing the hosted memory service. The application
+database alone is insufficient to restore long-term memory; see [memory](memory.md).

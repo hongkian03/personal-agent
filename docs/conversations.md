@@ -20,6 +20,10 @@ owner-scoped conversation. Other conversations, saved skills, IBKR snapshots, pe
 configuration, and morning delivery records are preserved. It does not delete the message
 history displayed in Apple's Messages app.
 
+When [long-term memory](memory.md) is enabled, resets also preserve Cognee memories and
+queued ingestion. A fresh conversation can therefore recall information from earlier
+ones. Use the memory tools to search and forget individual sources separately.
+
 Morning encouragement does not use conversational history. It uses the current shared
 persona and recent morning messages for variety, so resetting a chat does not clear those
 recent messages.
