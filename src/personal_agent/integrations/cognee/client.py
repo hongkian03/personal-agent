@@ -125,3 +125,23 @@ class CogneeClient:
         )
         if result.get("status") != "forgotten" or result.get("memory_id") != memory_id:
             raise CogneeError("Memory service did not confirm deletion")
+
+    async def graph_snapshot(self, *, owner_id: str, full: bool = False) -> str:
+        try:
+            async with self._client.stream(
+                "POST", self.base_url + "/graph", json={"owner_id": owner_id, "full": full},
+                headers={"Authorization": f"Bearer {self._token}", "Accept": "text/html"},
+                timeout=self.ingest_timeout_seconds, follow_redirects=False,
+            ) as response:
+                if response.status_code != 200:
+                    raise CogneeError("Memory graph export failed")
+                if "text/html" not in response.headers.get("content-type", ""):
+                    raise CogneeError("Memory service returned an invalid graph export")
+                data = bytearray()
+                async for chunk in response.aiter_bytes():
+                    data.extend(chunk)
+                    if len(data) > 10_000_000:
+                        raise CogneeError("Memory graph export exceeds 10 MB")
+                return data.decode("utf-8")
+        except (httpx.HTTPError, UnicodeError) as exc:
+            raise CogneeError("Memory graph export is unavailable") from exc

@@ -13,4 +13,5 @@ build/
 *.egg-info/
 .DS_Store
 .data/
+memory-graph*.html
 **/node_modules/

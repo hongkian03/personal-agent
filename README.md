@@ -37,6 +37,7 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   and forget individual entries; forgetting preserves separate conversation checkpoints and
   other entries. Memory outages allow ordinary chat to continue. Skills and operational records
   remain in the application database.
+  Authenticated graph exports produce interactive HTML snapshots for inspecting memory connections.
 - **Reusable skills:** Save, revise, activate, and archive reusable instructions. The agent
   selects from a compact catalog and loads full instructions on demand; exact skill names
   and IDs load directly. Skills are scoped to the owner and available tools.

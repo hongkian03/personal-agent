@@ -21,6 +21,7 @@ from personal_agent.agent.progress import ChatEventBuffer
 from personal_agent.agent.service import ChatValidationError, RuntimeConfigurationError
 from personal_agent.agent.tools import ToolOutcomeUnknown
 from personal_agent.bootstrap import open_runtime
+from personal_agent.integrations.cognee import CogneeError
 
 logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
@@ -160,6 +161,23 @@ def create_app() -> FastAPI:
         return ChatResponse(
             conversation_id=result.conversation_id, run_id=result.run_id, text=result.text
         )
+
+    @app.get("/memory/graph", dependencies=[Depends(authorize)])
+    async def memory_graph(request: Request, full: bool = False) -> Response:
+        runtime = request.app.state.runtime
+        if runtime.memory is None:
+            raise HTTPException(status_code=503, detail="Long-term memory is not configured")
+        try:
+            html = await runtime.memory.graph_snapshot(
+                owner_id=runtime.settings.owner_id, full=full,
+            )
+        except CogneeError:
+            raise HTTPException(status_code=502, detail="Memory graph export unavailable") from None
+        return Response(content=html, media_type="text/html", headers={
+            "Content-Disposition": 'attachment; filename="memory-graph.html"',
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "sandbox allow-scripts",
+        })
 
     @app.post("/chat/stream", dependencies=[Depends(authorize)])
     async def stream_chat(payload: ChatRequest, request: Request) -> StreamingResponse:

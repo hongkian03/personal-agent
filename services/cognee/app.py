@@ -11,12 +11,14 @@ import json
 import logging
 import os
 import sqlite3
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +42,10 @@ class Remember(MemoryIdentity):
 class Recall(Identity):
     query: str = Field(min_length=1, max_length=12000)
     limit: int = Field(default=5, ge=1, le=20)
+
+
+class GraphSnapshot(Identity):
+    full: bool = False
 
 
 def dataset_name(owner_id: str) -> str:
@@ -99,6 +105,17 @@ class CogneeBackend:
             dataset=dataset_name(record.owner_id),
             data_id=data_identifier(record.owner_id, record.memory_id),
         )
+
+    async def graph_snapshot(self, record: GraphSnapshot) -> str:
+        import cognee
+
+        with tempfile.TemporaryDirectory(prefix="cognee-graph-") as directory:
+            destination = Path(directory) / "memory-graph.html"
+            await cognee.visualize_graph(
+                str(destination), dataset=dataset_name(record.owner_id),
+                full=record.full, max_nodes=500, include_session_events=False,
+            )
+            return await asyncio.to_thread(destination.read_text, encoding="utf-8")
 
 
 def create_app(*, backend=None, token: str | None = None, storage_path: Path | None = None):
@@ -173,6 +190,30 @@ def create_app(*, backend=None, token: str | None = None, storage_path: Path | N
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.post("/graph", dependencies=[Depends(authenticate)], response_class=HTMLResponse)
+    async def graph_snapshot(record: GraphSnapshot):
+        # Export in the owning process, serialized against indexing and deletion.
+        async with lock:
+            exists = db.execute(
+                "SELECT 1 FROM memories WHERE owner_id=? AND status='remembered' LIMIT 1",
+                (record.owner_id,),
+            ).fetchone()
+            if not exists:
+                html = (
+                    "<!doctype html><html><head><meta charset='utf-8'>"
+                    "<title>Memory graph</title></head><body><h1>No indexed memories</h1>"
+                    "<p>This owner has no completed memory sources to visualize.</p></body></html>"
+                )
+            else:
+                try:
+                    html = await backend.graph_snapshot(record)
+                except Exception as error:
+                    logger.warning("memory_graph_failed error_type=%s", type(error).__name__)
+                    raise HTTPException(
+                        status_code=503, detail="Graph export unavailable"
+                    ) from None
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @app.post("/remember", dependencies=[Depends(authenticate)])
     async def remember(record: Remember):

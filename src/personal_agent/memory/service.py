@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryClient(Protocol):
+    async def graph_snapshot(self, *, owner_id: str, full: bool = False) -> str: ...
+
     async def remember(
         self, *, owner_id: str, memory_id: str, text: str, metadata: dict,
     ) -> None: ...
@@ -44,6 +46,9 @@ class MemoryService:
     async def start(self) -> None:
         if self._task is None:
             self._task = asyncio.create_task(self._worker(), name="memory-ingestion")
+
+    async def graph_snapshot(self, *, owner_id: str, full: bool = False) -> str:
+        return await self.client.graph_snapshot(owner_id=owner_id, full=full)
 
     async def close(self) -> None:
         if self._task is not None:

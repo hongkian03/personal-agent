@@ -122,6 +122,34 @@ and verify recall again. Search for its source ID, forget that source, wait for 
 and check that it is absent from subsequent memory searches. Existing conversation
 history can still contain the fact, so use a new conversation for that last check.
 
+## Graph snapshots
+
+Download an interactive graph snapshot through the running agent API:
+
+```sh
+personal-agent memory export-graph --api-url http://localhost:8000 --output memory-graph.html
+# Our private Railway deployment (requires Railway CLI login and linked project):
+personal-agent memory export-graph --railway --output memory-graph.html
+```
+
+The CLI uses `PERSONAL_AGENT_API_TOKEN` from the local environment or root `.env`.
+Use the reachable hosted agent URL for Railway. The authenticated `GET /memory/graph`
+route fixes the owner from server configuration and proxies the private Cognee service.
+It does not open local databases or start another ingestion worker.
+With `--railway`, the CLI makes the download through Railway SSH inside the private
+network and saves the HTML locally; the hosted API token stays in the container.
+
+The default shows a bounded neighborhood of at most 500 nodes; add `--full` to request
+the whole graph, which can be large. Existing output files are not overwritten. Open
+the downloaded HTML in a browser; the SDK viewer may load external JavaScript assets.
+An empty store produces an explanatory HTML page. The snapshot includes stored memory
+content as of export time and does not update as new memories arrive. Pending indexing
+or remote deletions may not yet be reflected. Export generation serializes with writes.
+
+The private service exposes authenticated `POST /graph` with `owner_id` and optional
+`full`. The export uses the SDK inside the existing Cognee process; no extra graph
+server or shared-file database access is needed.
+
 ## Service API
 
 All mutation/retrieval routes require `Authorization: Bearer <COGNEE_SERVICE_TOKEN>`.

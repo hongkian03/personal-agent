@@ -29,6 +29,8 @@ mock HTTP transports, fake model/broker clients and temporary SQLite databases.
   bounded owner-scoped retrieval, cancellation, and capture during slow remote requests.
 - `test_cognee_client.py`, `test_memory_tools.py`: authenticated HTTP contracts and durable
   conversational memory-tool operations.
+- `test_graph_export.py` and graph checks in `test_cognee_service.py`: owner-scoped HTML
+  downloads, authentication, empty stores, and CLI export without starting a local runtime.
 
 The Spectrum bridge has separate SSE parser and delivery tests: run `npm test` and
 `npm run typecheck` in `bridges/spectrum`. They use synthetic streams and fake sends.

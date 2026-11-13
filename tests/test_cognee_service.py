@@ -41,6 +41,34 @@ class Backend:
         if self.failure:
             raise RuntimeError("provider unavailable")
 
+    async def graph_snapshot(self, record):
+        return "<!doctype html><html>Graph for " + record.owner_id + "</html>"
+
+
+def test_graph_snapshot_auth_empty_owner_and_dataset_scope(tmp_path):
+    async def check():
+        app = service.create_app(
+            backend=Backend(), token=TOKEN, storage_path=tmp_path / "control.sqlite",
+        )
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app), base_url="http://memory",
+            ) as client:
+                assert (await client.post("/graph", json={"owner_id": "alice"})).status_code == 401
+                client.headers["Authorization"] = "Bearer " + TOKEN
+                empty = await client.post("/graph", json={"owner_id": "alice"})
+                assert "No indexed memories" in empty.text
+                await client.post("/remember", json={
+                    "owner_id": "alice", "memory_id": "a", "text": "a fact",
+                })
+                graph = await client.post("/graph", json={"owner_id": "alice", "full": True})
+                assert "Graph for alice" in graph.text
+                assert graph.headers["cache-control"] == "no-store"
+                assert "No indexed memories" in (await client.post(
+                    "/graph", json={"owner_id": "bob"},
+                )).text
+    asyncio.run(check())
+
 
 def test_capture_retry_recall_and_forget_survive_restart(tmp_path):
     async def scenario():
