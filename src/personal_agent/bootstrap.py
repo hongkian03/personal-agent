@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from personal_agent.agent.graph import build_graph
 from personal_agent.agent.management import SKILL_TOOL_IDS
+from personal_agent.agent.progress_messages import ProgressMessages
 from personal_agent.agent.service import AgentRuntime
 from personal_agent.agent.tools import ToolDefinition, ToolError, ToolRegistry
 from personal_agent.capabilities.motivation.manifest import CAPABILITY as MOTIVATION
@@ -277,6 +278,7 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 account_ids=settings.ibkr_accounts,
             )
         model = None
+        progress_model = None
         sync_task = None
         memory = None
         memory_client = None
@@ -338,6 +340,11 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                     tool_timeout_seconds=settings.tool_timeout_seconds,
                     web_search_max_calls=settings.web_search_max_calls,
                 )
+                if settings.progress_enabled and settings.progress_dynamic_enabled:
+                    progress_model = OpenAIModel(
+                        api_key=settings.model_api_key.get_secret_value(), model=settings.model,
+                        timeout_seconds=3, max_output_tokens=256, max_attempts=1,
+                    )
             morning = (
                 MorningMessage(
                     model,
@@ -375,8 +382,14 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                 portfolio=portfolio,
                 portfolio_morning=portfolio_morning,
                 memory=memory,
+                progress_messages=(
+                    ProgressMessages(progress_model, settings.persona_path)
+                    if progress_model else None
+                ),
             )
         finally:
+            if progress_model is not None:
+                await progress_model.aclose()
             if memory is not None:
                 await memory.close()
             if memory_client is not None:

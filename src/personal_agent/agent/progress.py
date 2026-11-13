@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from time import monotonic
@@ -34,6 +34,7 @@ class ChatEvent:
 
 
 ChatEventCallback = Callable[[ChatEvent], None]
+ProgressMessageFactory = Callable[[str, str | None], Awaitable[str | None]]
 
 
 class ProgressReporter:
@@ -49,6 +50,8 @@ class ProgressReporter:
         max_updates: int,
         timeout_seconds: float,
         clock: Callable[[], float] = monotonic,
+        message_factory: ProgressMessageFactory | None = None,
+        message_timeout_seconds: float = 3,
     ) -> None:
         self.run_id = run_id
         self.conversation_id = conversation_id
@@ -66,6 +69,9 @@ class ProgressReporter:
         self.sequence = 0
         self.closed = False
         self.timer: asyncio.Task | None = None
+        self.message_factory = message_factory
+        self.message_timeout_seconds = message_timeout_seconds
+        self.last_text: str | None = None
 
     def emit(self, kind: str, **kwargs) -> None:
         self.sequence += 1
@@ -94,7 +100,7 @@ class ProgressReporter:
         }:
             self.phase = event.phase
 
-    def emit_due(self) -> None:
+    def emit_due(self, generated_text: str | None = None) -> None:
         """One notification per elapsed interval; never catch up with a message burst."""
         if self.closed or not self.enabled or self.clock() < self.next_due:
             return
@@ -113,11 +119,14 @@ class ProgressReporter:
         text = messages[self.phase]
         if self.acknowledged and self.phase == self.last_phase:
             text = "This is taking a little longer; I’m still working on it."
+        if generated_text:
+            text = generated_text
         kind = "status" if self.acknowledged else "acknowledgment"
         if self.acknowledged:
             self.updates += 1
         self.acknowledged = True
         self.last_phase = self.phase
+        self.last_text = text
         self.next_due = self.clock() + self.interval
         self.emit(kind, text=text)
 
@@ -126,7 +135,19 @@ class ProgressReporter:
             await asyncio.sleep(max(0, self.next_due - self.clock()))
             # Give a completing request priority over a notification due this tick.
             await asyncio.sleep(0)
-            self.emit_due()
+            if self.closed:
+                return
+            generated = None
+            phase = self.phase
+            if self.message_factory is not None:
+                try:
+                    async with asyncio.timeout(self.message_timeout_seconds):
+                        generated = await self.message_factory(phase, self.last_text)
+                except Exception as exc:
+                    logger.warning("progress_generation_failed error_type=%s", type(exc).__name__)
+            # Activity can change while the auxiliary call runs. Use current fixed text
+            # rather than describing a stale phase. Completion still takes priority.
+            self.emit_due(generated if phase == self.phase else None)
             if self.acknowledged and self.updates >= self.max_updates:
                 return
 
@@ -134,6 +155,8 @@ class ProgressReporter:
         if self.closed:
             return
         self.closed = True
+        if self.timer is not None:
+            self.timer.cancel()
         self.emit(kind, text=text, code=code)
 
     async def aclose(self) -> None:

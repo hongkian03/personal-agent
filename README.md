@@ -23,6 +23,8 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
   API, with persistent conversation history, conversation resets, and access to registered tools.
   Longer requests through iMessage, the CLI, or streaming HTTP receive delayed acknowledgments
   and occasional activity updates, followed by a complete answer or an explicit failure message.
+  Progress wording can adapt to the request, shared persona, and already-retrieved memory,
+  with fixed messages as a fallback when generation is unavailable.
   Failed turns can be retried while preserving completed work and conversation history;
   a new question can continue the same conversation after a failure.
   Durable tool receipts prevent completed writes from being repeated during recovery,

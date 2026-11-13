@@ -8,9 +8,23 @@ and background portfolio syncs do not receive these interactive notifications.
 ## Defined behavior
 
 The default policy sends no acknowledgment when an answer finishes within five seconds.
-If the request is still running, it sends one brief acknowledgment at five seconds,
+If the request is still running, it prepares one brief acknowledgment after five seconds,
 then at most one status update every 30 seconds. Up to five status updates may follow
 the acknowledgment. Final answers and failures do not count toward that limit.
+
+By default, a separate tool-free call to the configured model generates each due
+notification from the current request, observed activity, shared persona, and a small
+excerpt of memory already retrieved for that turn. It does not search memory again,
+read the complete conversation, execute tools, or save progress text into checkpoints
+or long-term memory. Each call has a three-second deadline, a 256-token output limit,
+and no retries. This adds at most one small model request per notification. Fast replies
+that finish before the acknowledgment delay make no progress-generation calls.
+
+Generation runs alongside the main request and can add up to three seconds to the
+notification's timing, without extending the answer deadline. Failure, timeout, invalid
+or repeated wording, or a changed activity phase uses the current fixed message instead.
+Waiting, retrying, and recovery notifications retain fixed wording. Finishing or cancelling
+the main request cancels in-flight notification generation and prevents late updates.
 
 Updates reflect observed activity, such as a model request running, hosted search
 executing, or an application tool executing. Multiple activity changes between updates
@@ -35,6 +49,7 @@ service, then restart or redeploy the process:
 | Variable | Default | Behavior |
 | --- | --- | --- |
 | `PERSONAL_AGENT_PROGRESS_ENABLED` | `true` | Enables delayed acknowledgment and status messages. |
+| `PERSONAL_AGENT_PROGRESS_DYNAMIC_ENABLED` | `true` | Generates personable wording; disable for fixed messages. |
 | `PERSONAL_AGENT_PROGRESS_ACK_DELAY_SECONDS` | `5` | Delay before acknowledging a request that is still running. |
 | `PERSONAL_AGENT_PROGRESS_INTERVAL_SECONDS` | `30` | Minimum time between the acknowledgment and subsequent status messages. |
 | `PERSONAL_AGENT_PROGRESS_MAX_UPDATES` | `5` | Maximum status messages after the acknowledgment; excludes the terminal message. |

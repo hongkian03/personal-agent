@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from personal_agent.agent.progress import (
     activity_callback,
     report_activity,
 )
+from personal_agent.agent.progress_messages import ProgressContext, ProgressMessages
 from personal_agent.agent.recovery import (
     close_interrupted_turn,
     is_recovery_command,
@@ -61,6 +63,7 @@ class AgentRuntime:
         portfolio: Any = None,
         portfolio_morning: Any = None,
         memory: Any = None,
+        progress_messages: ProgressMessages | None = None,
     ) -> None:
         self.settings = settings
         self.graph = graph
@@ -71,6 +74,7 @@ class AgentRuntime:
         self.portfolio = portfolio
         self.portfolio_morning = portfolio_morning
         self.memory = memory
+        self.progress_messages = progress_messages
         # Fixed stripes bound memory while serializing each conversation in one process.
         self._locks = [asyncio.Lock() for _ in range(64)]
 
@@ -97,6 +101,7 @@ class AgentRuntime:
         self.validate_chat(message, conversation_id)
         conversation_id = conversation_id or uuid4().hex
         run_id = uuid4().hex
+        progress_context = ProgressContext(request=message)
         progress = ProgressReporter(
             run_id=run_id,
             conversation_id=conversation_id,
@@ -106,12 +111,19 @@ class AgentRuntime:
             interval=self.settings.progress_interval_seconds,
             max_updates=self.settings.progress_max_updates,
             timeout_seconds=self.settings.chat_timeout_seconds,
+            message_factory=(
+                partial(self.progress_messages.generate, progress_context)
+                if self.progress_messages is not None and self.settings.progress_dynamic_enabled
+                else None
+            ),
         )
         progress.start()
         token = activity_callback.set(progress.activity)
         try:
             async with asyncio.timeout(self.settings.chat_timeout_seconds):
-                result = await self._execute_chat(message, conversation_id, run_id)
+                result = await self._execute_chat(
+                    message, conversation_id, run_id, progress_context=progress_context,
+                )
             progress.finish("result", text=result.text)
             return result
         except TimeoutError:
@@ -157,7 +169,10 @@ class AgentRuntime:
             activity_callback.reset(token)
             await progress.aclose()
 
-    async def _execute_chat(self, message: str, conversation_id: str, run_id: str) -> ChatResult:
+    async def _execute_chat(
+        self, message: str, conversation_id: str, run_id: str,
+        *, progress_context: ProgressContext | None = None,
+    ) -> ChatResult:
         # Prevent ambiguous owner/conversation concatenation and scope persisted checkpoints.
         thread_id = hashlib.sha256(
             json.dumps([self.settings.owner_id, conversation_id]).encode()
@@ -237,6 +252,8 @@ class AgentRuntime:
                     snapshot = await self.graph.aget_state(config)
                     logger.info("chat_turn_closed run_id=%s", run_id)
                 history = snapshot.values.get("items", [])
+                if progress_context is not None:
+                    progress_context.request = message
                 new_input_chars = 0 if retry else len(message)
                 if len(json.dumps(history)) + new_input_chars > self.settings.max_history_chars:
                     raise ChatValidationError("Conversation is full. Start a new conversation.")
@@ -270,6 +287,8 @@ class AgentRuntime:
                     )
                     if memory_context:
                         guidance += "Retrieved memory reference data:\n" + memory_context
+                    if progress_context is not None:
+                        progress_context.memory = memory_context
                 web_guidance = (
                     "Web search is available for current public information and company research. "
                     "Search when the user explicitly requests it or when an answer depends on "

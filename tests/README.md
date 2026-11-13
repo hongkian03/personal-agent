@@ -17,6 +17,8 @@ mock HTTP transports, fake model/broker clients and temporary SQLite databases.
 - `test_cli_progress.py`: progress display with one final CLI answer.
 - `test_progress_graph.py`: live activity across compiled LangGraph rounds, checkpoint
   integrity, and prevention of partial-tool execution after an interrupted provider stream.
+- `test_dynamic_progress.py`: persona/memory inputs, request isolation, deadline fallback,
+  stale activity, repetition, and cancellation of generated notifications without checkpoint writes.
 - `test_api_logging.py`: descriptive API failure messages, correlation IDs, underlying
   exception locations, and exclusion of private provider/user data from warnings.
 - `test_turn_recovery.py`: same-conversation retries, preserved history, legacy checkpoints,
