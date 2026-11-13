@@ -40,6 +40,13 @@ and tool-operation receipts remain authoritative in the application database. In
 mode the memory outbox shares `skills.sqlite`; Cognee's independent data is on its own
 volume. Neither database is a cache that can be discarded safely.
 
+Morning encouragement also uses the existing memory service when enabled. Before generating
+a due message, it searches for goals, projects, priorities, and communication preferences,
+using the same recall timeout and context limits as chat. Empty or unavailable memory
+falls back to persona-based encouragement. Memory is reference data and may be outdated;
+the prompt does not assume remembered plans are today's commitments. This read does not
+save morning messages into Cognee or change portfolio briefings or daily delivery claims.
+
 ## Local setup
 
 Copy `services/cognee/.env.example` to `services/cognee/.env`. Generate a service token

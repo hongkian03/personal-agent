@@ -352,6 +352,8 @@ async def open_runtime(settings: Settings | None = None, *, ibkr_client=None):
                     settings.owner_id,
                     ZoneInfo(settings.timezone),
                     persona_path=settings.persona_path,
+                    memory=memory,
+                    memory_timeout_seconds=settings.memory_recall_timeout_seconds,
                 )
                 if model
                 else None

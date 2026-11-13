@@ -24,6 +24,8 @@ When [long-term memory](memory.md) is enabled, resets also preserve Cognee memor
 queued ingestion. A fresh conversation can therefore recall information from earlier
 ones. Use the memory tools to search and forget individual sources separately.
 
-Morning encouragement does not use conversational history. It uses the current shared
-persona and recent morning messages for variety, so resetting a chat does not clear those
-recent messages.
+Morning encouragement uses the current shared persona and recent morning messages for
+variety. When memory is enabled, it also retrieves relevant Cognee context about goals,
+projects, priorities, and communication preferences. It does not load a conversation's
+checkpoint history directly. Resetting a chat preserves both recent morning messages
+and long-term memory.

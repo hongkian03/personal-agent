@@ -19,6 +19,8 @@ mock HTTP transports, fake model/broker clients and temporary SQLite databases.
   integrity, and prevention of partial-tool execution after an interrupted provider stream.
 - `test_dynamic_progress.py`: persona/memory inputs, request isolation, deadline fallback,
   stale activity, repetition, and cancellation of generated notifications without checkpoint writes.
+- `test_morning_memory.py`: owner-scoped morning recall, empty/disabled/offline memory,
+  timeout fallback, and preservation of the morning window and daily claims.
 - `test_api_logging.py`: descriptive API failure messages, correlation IDs, underlying
   exception locations, and exclusion of private provider/user data from warnings.
 - `test_turn_recovery.py`: same-conversation retries, preserved history, legacy checkpoints,

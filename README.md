@@ -55,6 +55,8 @@ This also serves as an open portfolio project (hi recruiters!) but if anyone for
 - **Morning portfolio briefings:** Weekday iMessage summaries of portfolio value,
   performance, major holdings, and P&L contributors, with report dates and freshness information.
 - **Morning encouragement:** Short daily motivational messages, including weekends, guided by the shared
-  persona and recent messages for variety.
+  persona and recent messages for variety. When memory is enabled, relevant Cognee memories
+  about goals, projects, and preferences inform the message; unavailable memory falls back
+  to general encouragement.
 - **Controlled tool access:** Validated tool arguments, explicit permission scopes,
   owner-scoped storage, and messaging restricted to the configured sender.
